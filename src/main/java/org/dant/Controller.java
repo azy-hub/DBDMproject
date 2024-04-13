@@ -128,7 +128,7 @@ public class Controller {
             new Table(name);
         else
             new Table(name, listColumns);
-        forwardCreateTable("172.20.10.2",name,listColumns);
+        forwardCreateTable("172.20.10.3",name,listColumns);
         //forwardCreateTable();
         System.out.println("Table created successfully");
     }
@@ -136,7 +136,7 @@ public class Controller {
     private void forwardCreateTable(String ipAddress, String name, List<Column> columns) {
         String serverAddress = ipAddress;
         int serverPort = 8080;
-        String endpoint = "/v1/createTable/"+name;
+        String endpoint = "/slave/createTable/"+name;
         String url = "http://" + serverAddress + ":" + serverPort + endpoint;
         HttpClient httpClient = HttpClient.newHttpClient();
         Gson gson = new Gson();
