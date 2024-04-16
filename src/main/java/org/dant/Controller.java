@@ -201,6 +201,7 @@ public class Controller {
             new Table(name);
         else
             new Table(name, listColumns);
+
         //forwardCreateTable("172.20.10.2",name,listColumns);
         //forwardCreateTable("172.20.10.4",name,listColumns);
         System.out.println("Table created successfully");
