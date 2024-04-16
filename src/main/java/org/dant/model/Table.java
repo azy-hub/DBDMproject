@@ -76,6 +76,10 @@ public class Table {
         return false;
     }
 
+    public boolean checkConditions(List<Condition> conditions) {
+        return conditions.stream().allMatch(this::checkCondition);
+    }
+
     public int getIndexOfColumnByCondition (Condition condition) {
         for (Column column : columns) {
             if (condition.getNameColumn().equals(column.getName())) {
@@ -83,5 +87,17 @@ public class Table {
             }
         }
         return -1;
+    }
+
+    public List<Integer> getIndexOfColumnsByConditions(List<Condition> conditions) {
+        return conditions.stream().map(this::getIndexOfColumnByCondition).toList();
+    }
+
+    public boolean validate(List<Object> list, List<Condition> conditions, List<Integer> idx, List<String> type) {
+        for(int i=0; i<conditions.size(); i++) {
+            if (!conditions.get(i).checkCondition(list, idx.get(i), type.get(i)))
+                return false;
+        }
+        return true;
     }
 }
