@@ -30,6 +30,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 import java.util.zip.GZIPOutputStream;
 
 
@@ -234,21 +235,18 @@ public class Controller {
     @GET
     @Path("/select/{tableName}")
     @Produces(MediaType.APPLICATION_JSON)
-    public List<List<Object>> getTableContent(@RestPath("tableName") String tableName, Condition condition) {
+    public List<List<Object>> getTableContent(@RestPath("tableName") String tableName, List<Condition> conditions) {
         Table table = DataBase.get().get(tableName);
         if (table == null)
             throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
-        if (condition == null)
+        if (conditions == null || conditions.isEmpty())
             return table.getRows();
         List<List<Object>> res = new LinkedList<>();
-        if (!table.checkCondition(condition))
+        if (!table.checkConditions(conditions))
             return res;
-        int idx = table.getIndexOfColumnByCondition(condition);
-        String type = table.getColumns().get(idx).getType();
-        for( List<Object> tmp : table.getRows() ) {
-            if (condition.checkCondition(tmp,idx,type))
-                res.add(tmp);
-        }
+        List<Integer> idx = table.getIndexOfColumnsByConditions(conditions);
+        List<String> type = idx.stream().map( indice -> table.getColumns().get(indice).getType() ).toList();
+        res = table.getRows().parallelStream().filter( list -> table.validate(list,conditions,idx,type) ).collect(Collectors.toList());
         System.out.println(res.size());
         return res;
     }
