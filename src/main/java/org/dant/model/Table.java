@@ -77,7 +77,7 @@ public class Table {
     }
 
     public boolean checkConditions(List<Condition> conditions) {
-        return conditions.stream().allMatch(this::checkCondition);
+        return (conditions == null) || conditions.stream().allMatch(this::checkCondition);
     }
 
     public int getIndexOfColumnByCondition (Condition condition) {
