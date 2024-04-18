@@ -1,28 +1,44 @@
 package org.dant;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.google.gson.reflect.TypeToken;
-import io.quarkus.vertx.http.Compressed;
+import jakarta.annotation.Nullable;
 import jakarta.ws.rs.*;
 
 import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.Response;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.io.IOUtils;
+import org.apache.hadoop.fs.FSDataOutputStream;
+import org.apache.parquet.ParquetReadOptions;
 import org.apache.parquet.column.ColumnDescriptor;
+import org.apache.parquet.column.page.PageReadStore;
 import org.apache.parquet.example.data.Group;
+import org.apache.parquet.example.data.simple.SimpleGroup;
+import org.apache.parquet.example.data.simple.convert.GroupRecordConverter;
+import org.apache.parquet.hadoop.ParquetFileReader;
 import org.apache.parquet.hadoop.ParquetReader;
+import org.apache.parquet.hadoop.api.ReadSupport;
 import org.apache.parquet.hadoop.example.GroupReadSupport;
-import org.apache.parquet.schema.MessageType;
+import org.apache.parquet.hadoop.metadata.ParquetMetadata;
+import org.apache.parquet.hadoop.util.HadoopInputFile;
+import org.apache.parquet.io.ColumnIOFactory;
+import org.apache.parquet.io.MessageColumnIO;
+import org.apache.parquet.io.RecordReader;
+import org.apache.parquet.io.api.RecordMaterializer;
 import org.apache.hadoop.conf.Configuration;
-import org.codehaus.jettison.json.JSONArray;
-import org.codehaus.jettison.json.JSONObject;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.parquet.schema.MessageType;
 import org.dant.model.*;
 import org.jboss.resteasy.reactive.RestPath;
 
-import java.io.ByteArrayOutputStream;
+
+
 import java.io.IOException;
 
+import java.io.InputStream;
+import java.io.Reader;
 import java.lang.reflect.Type;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -31,138 +47,119 @@ import java.net.http.HttpResponse;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
-import java.util.zip.GZIPOutputStream;
 
 
 @Path("/v1")
 public class Controller {
 
     @POST
-    @Path("/createTableFromParquet/{tableName}")
-    @Produces(MediaType.TEXT_PLAIN)
-    public void createTableFromParquet(@RestPath String tableName) throws IOException {
-        org.apache.hadoop.fs.Path parquetFilePath = new org.apache.hadoop.fs.Path("./src/main/resources/yellow_tripdata_2009-02.parquet");
-        Configuration configuration = new Configuration();
-        try (ParquetReader<Group> reader = ParquetReader.builder(new GroupReadSupport(), parquetFilePath)
-                .withConf(configuration)
-                .build()) {
-            Group record;
-            MessageType schema = (MessageType) reader.read().getType();
-            List<Column> columns = new ArrayList<>();
-            for(ColumnDescriptor columnDescriptor : schema.getColumns()) {
-                columns.add(new Column(columnDescriptor.getPrimitiveType().getName(),columnDescriptor.getType().toString()));
+    @Path("/parquet/createTable/{tableName}")
+    @Consumes(MediaType.APPLICATION_OCTET_STREAM)
+    public String parseParquet(@RestPath String tableName, InputStream inputStream) {
+        Configuration conf = new Configuration();
+        FileSystem fs;
+        org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path("temp.parquet");
+        try {
+            fs = FileSystem.get(conf);
+            // Copier le contenu de l'inputStream dans un fichier parquet temporaire
+            try (FSDataOutputStream outputStream = fs.create(path)) {
+                IOUtils.copy(inputStream, outputStream);
             }
-            createTable(tableName,columns);
         } catch (IOException e) {
-            System.out.println("IO Exception : "+e.getMessage());
+            throw new RuntimeException(e);
+        }
+        try {
+            HadoopInputFile hadoopInputFile = HadoopInputFile.fromPath(path, conf);
+            try (ParquetFileReader parquetFileReader = ParquetFileReader.open(hadoopInputFile)) {
+                ParquetMetadata parquetMetadata = parquetFileReader.getFooter();
+                MessageType parquetSchema = parquetMetadata.getFileMetaData().getSchema();
+                List<Column> columns = new ArrayList<>();
+                for (ColumnDescriptor columnDescriptor : parquetSchema.getColumns()) {
+                    columns.add(new Column(columnDescriptor.getPrimitiveType().getName(), columnDescriptor.getPrimitiveType().getPrimitiveTypeName().toString()));
+                }
+                createTable(tableName,columns);
+                return "Table created successfully";
+            }
+        } catch (IOException e) {
+            return "error while creating table. "+e.getMessage();
+        } finally {
+            try {
+                fs.delete(path, false);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
     }
 
     @POST
-    @Path("/addRowFromParquet/{tableName}")
-    @Produces(MediaType.TEXT_PLAIN)
-    public void addRowFromParquet(@RestPath String tableName) throws IOException {
-        org.apache.hadoop.fs.Path parquetFilePath = new org.apache.hadoop.fs.Path("./src/main/resources/yellow_tripdata_2009-02.parquet");
-        Configuration configuration = new Configuration();
-        ExecutorService executorService = Executors.newSingleThreadExecutor();
-        try (ParquetReader<Group> reader1 = ParquetReader.builder(new GroupReadSupport(), parquetFilePath)
-                .withConf(configuration)
-                .build();
-        ParquetReader<Group> reader2 = ParquetReader.builder(new GroupReadSupport(), parquetFilePath)
-                .withConf(configuration)
-                .build()) {
-            Group record1;
-            Table table = DataBase.get().get(tableName);
-            List<Column> columns = table.getColumns();
-            /*Future<Void> future = executorService.submit(new Callable<Void>() {
-                @Override
-                public Void call() throws Exception {
-                    long desiredRecord = 5000000;
-                    Group record2;
-                    try {
-                        for (long i = 0; i < desiredRecord; i++) {
-                            record2 = reader2.read();
-                        }
-                        int cpt = 0;
-                        while (cpt < 10000) {
-                            record2 = reader2.read();
-                            List<List<Object>> listOfList = new ArrayList<>();
-                            List<Object> list = new ArrayList<>();
-                            listOfList.clear();
-                            for (int i = 0; i < 500; i++) {
-                                list.clear();
-                                for (Column column : columns) {
-                                    try {
-                                        switch (column.getType()) {
-                                            case "BINARY":
-                                                list.add(record2.getBinary(column.getName(), 0).toStringUsingUTF8());
-                                                break;
-                                            case "INT64":
-                                                list.add(record2.getLong(column.getName(), 0));
-                                                break;
-                                            case "DOUBLE":
-                                                list.add(record2.getDouble(column.getName(), 0));
-                                                break;
-                                            default:
-                                                list.add(null);
-                                                break;
-                                        }
-                                    } catch(RuntimeException e) {
-                                        list.add(null);
-                                    }
-                                }
-                                listOfList.add(list);
-                            }
-                            forwardRowToTable("172.20.10.2", tableName, listOfList);
-                            cpt++;
-                        }
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                    return (Void)null;
-                }
-            });*/
-            int cpt = 0;
-            while (cpt < 1000) {
-                record1 = reader1.read();
-                List<Object> list = new ArrayList<>();
-                for (Column column : columns) {
-                    try {
-                        switch (column.getType()) {
-                            case "BINARY":
-                                list.add(record1.getBinary(column.getName(), 0).toStringUsingUTF8());
-                                break;
-                            case "INT64":
-                                list.add(record1.getLong(column.getName(), 0));
-                                break;
-                            case "DOUBLE":
-                                list.add(record1.getDouble(column.getName(), 0));
-                                break;
-                            default:
-                                list.add(null);
-                                break;
-                        }
-                    } catch (RuntimeException e) {
-                        list.add(null);
-                    }
-                }
-                table.addRow(list);
-                cpt++;
+    @Path("/parquet/fillTable/{tableName}")
+    @Consumes(MediaType.APPLICATION_OCTET_STREAM)
+    public void readParquet(@RestPath String tableName, InputStream inputStream) {
+        Configuration conf = new Configuration();
+        Table table = DataBase.get().get(tableName);
+        if (table == null)
+            return;
+        FileSystem fs = null;
+        org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path("temp.parquet");
+        try {
+            fs = FileSystem.get(conf);
+            try (FSDataOutputStream outputStream = fs.create(path)) {
+                IOUtils.copy(inputStream, outputStream);
             }
-            //future.get();
-            System.out.println("FINI !");
         } catch (IOException e) {
-            System.out.println("IO Exception : "+e.getMessage());
-        } /*catch (ExecutionException | InterruptedException e) {
+            System.out.println("Erreur en recopiant le fichier parquet lu");
+        };
+        try (ParquetFileReader parquetFileReader = new ParquetFileReader(HadoopInputFile.fromPath(path, new Configuration()), ParquetReadOptions.builder().build())) {
+            ParquetMetadata footer = parquetFileReader.getFooter();
+            MessageType schema = footer.getFileMetaData().getSchema();
+            PageReadStore pages;
+            while ((pages = parquetFileReader.readNextRowGroup()) != null) {
+                long rows = pages.getRowCount();
+                RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
+                System.out.println(rows);
+                for (int row = 0; row < 50; row++) {
+                    int fieldIndex = 0;
+                    SimpleGroup simpleGroup = (SimpleGroup) recordReader.read();
+                    List<Object> list = new ArrayList<>();
+                    for (Column column : table.getColumns()) {
+                        try {
+                            switch (column.getType()) {
+                                case "BINARY":
+                                    list.add(simpleGroup.getBinary(fieldIndex, 0).toStringUsingUTF8());
+                                    break;
+                                case "INT64":
+                                    list.add(simpleGroup.getLong(fieldIndex, 0));
+                                    break;
+                                case "DOUBLE":
+                                    list.add(simpleGroup.getDouble(fieldIndex, 0));
+                                    break;
+                                default:
+                                    list.add(null);
+                                    break;
+                            }
+                        } catch (RuntimeException e) {
+                            list.add(null);
+                        }
+                        fieldIndex++;
+                    }
+                    table.addRow(list);
+                }
+            }
+        } catch (Exception e) {
             throw new RuntimeException(e);
-        }*/
+        } finally {
+            try {
+                if (fs != null)
+                    fs.delete(path, false);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        System.out.println("FINI !");
     }
 
     private void forwardRowToTable(String ipAddress, String name, List<List<Object>> row) {
-        String serverAddress = ipAddress;
-        int serverPort = 8080;
-        String endpoint = "/slave/addRowToTable/"+name;
-        String url = "http://" + serverAddress + ":" + serverPort + endpoint;
+        String url = "https://" + ipAddress + ":" + 8080 +"/slave/addRowToTable/"+name;
         HttpClient httpClient = HttpClient.newHttpClient();
         Gson gson = new Gson();
         String jsonBody = gson.toJson(row);
@@ -172,46 +169,50 @@ public class Controller {
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
         try {
-            CompletableFuture<HttpResponse<Void>> futureResponse = httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding());
+            httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding());
         } catch (Exception e) {
-            e.printStackTrace();
+            System.out.println("Erreur in forwarding row to other slave node");
         }
     }
 
     @POST
     @Path("/DataBase")
-    public void getAllTables() {
-        System.out.println("Les Tables sont : ");
+    public String getAllTables() {
+        StringBuilder stringBuilder = new StringBuilder("Les Tables sont : \n");
         Map<String, Table> map = DataBase.get();
         for(String name : map.keySet()) {
-            System.out.println(name);
+            stringBuilder.append("Table ").append(name).append(" :\n");
             List<Column> columns = map.get(name).getColumns();
             for( Column c : columns ) {
-                System.out.println("Colonne : "+ c.getName() + ", Type : "+c.getType());
+                stringBuilder.append("Colonne : ").append(c.getName()).append(", Type : ").append(c.getType());
             }
         }
+        return stringBuilder.toString();
     }
 
     @POST
     @Path("/createTable/{name}")
     @Consumes(MediaType.APPLICATION_JSON)
-    public void createTable(@RestPath String name, List<Column> listColumns) {
+    public void createTable(@RestPath String name,@Nullable List<Column> listColumns) {
         System.out.println("Create table "+name);
+        if (DataBase.get().containsKey(name)) {
+            System.out.println("Table already exists with name : "+name);
+            return;
+        }
+        //forwardCreateTable("172.20.10.2",name,listColumns);
+        //forwardCreateTable("172.20.10.4",name,listColumns);
         if( listColumns.isEmpty() )
             new Table(name);
         else
             new Table(name, listColumns);
-
-        //forwardCreateTable("172.20.10.2",name,listColumns);
-        //forwardCreateTable("172.20.10.4",name,listColumns);
         System.out.println("Table created successfully");
     }
 
     private void forwardCreateTable(String ipAddress, String name, List<Column> columns) {
         String url = "http://" + ipAddress + ":" + 8080 + "/slave/createTable/"+name;
-        HttpClient httpClient = HttpClient.newHttpClient();
         Gson gson = new Gson();
         String jsonBody = gson.toJson(columns);
+        HttpClient httpClient = HttpClient.newHttpClient();
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Content-Type", "application/json")
@@ -219,58 +220,69 @@ public class Controller {
                 .build();
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            /*// Vérification du code de statut
-            int statusCode = response.statusCode();
-            if (statusCode == 200) {
-                // Lecture du corps de la réponse
-                String responseBody = response.body();
-                System.out.println("Réponse du serveur : " + responseBody);
-            } else {
-                System.out.println("Erreur lors de la requête : " + statusCode);
-            }*/
         } catch (Exception e) {
-            e.printStackTrace();
+            System.out.println("Erreur lors de l'envoie de la diffusion de la requête select. " + e.getMessage());
         }
     }
 
-    @GET
+    @POST
     @Path("/select/{tableName}")
     @Produces(MediaType.APPLICATION_JSON)
-    public List<List<Object>> getTableContent(@RestPath("tableName") String tableName, List<Condition> conditions) {
+    public List<List<Object>> getTableContent(@RestPath("tableName") String tableName,@Nullable List<Condition> conditions) {
         Table table = DataBase.get().get(tableName);
         if (table == null)
             throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
-        if (conditions == null || conditions.isEmpty())
-            return table.getRows();
         List<List<Object>> res = new LinkedList<>();
         if (!table.checkConditions(conditions))
             return res;
-        List<Integer> idx = table.getIndexOfColumnsByConditions(conditions);
-        List<String> type = idx.stream().map( indice -> table.getColumns().get(indice).getType() ).toList();
-        res = table.getRows().parallelStream().filter( list -> table.validate(list,conditions,idx,type) ).collect(Collectors.toList());
+        ExecutorService executorService = Executors.newFixedThreadPool(2);
+        Future<List<List<Object>>> future1 = executorService.submit(new Callable<List<List<Object>>>() {
+                @Override
+                public List<List<Object>> call() {
+                    return forwardGetTableContent("",tableName,conditions);
+                }
+            });
+        Future<List<List<Object>>> future2 = executorService.submit(new Callable<List<List<Object>>>() {
+                @Override
+                public List<List<Object>> call() {
+                    return forwardGetTableContent("",tableName,conditions);
+                }
+            });
+        if (conditions == null || conditions.isEmpty()) {
+            res = table.getRows();
+        } else {
+            List<Integer> idx = table.getIndexOfColumnsByConditions(conditions);
+            List<String> type = idx.stream().map(indice -> table.getColumns().get(indice).getType()).toList();
+            res = table.getRows().parallelStream().filter(list -> table.validate(list, conditions, idx, type)).collect(Collectors.toList());
+        }
+        /*try {
+            res.addAll(future1.get());
+            res.addAll(future2.get());
+        } catch (InterruptedException | ExecutionException e) {
+            throw new RuntimeException(e);
+        }*/
         System.out.println(res.size());
         return res;
     }
 
-    private List<List<Object>> forwardGetTableContent(String ipAddress, String name) {
+    private List<List<Object>> forwardGetTableContent(String ipAddress, String name, List<Condition> conditions) {
         int serverPort = 8080;
         String endpoint = "/slave/select/"+name;
         String url = "http://" + ipAddress + ":" + serverPort + endpoint;
+        Gson gson = new Gson();
+        String jsonBody = gson.toJson(conditions);
         HttpClient httpClient = HttpClient.newHttpClient();
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Content-Type", "text/plain")
-                .GET()
+                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            System.out.println(response.body());
-            Gson gson = new Gson();
             Type listType = new TypeToken<List<List<Object>>>(){}.getType();
             return gson.fromJson(response.body(), listType);
-
         } catch (Exception e) {
-            e.printStackTrace();
+            System.out.println("Erreur lors de l'envoie de la diffusion de la requête select. " + e.getMessage());
         }
         return null;
     }

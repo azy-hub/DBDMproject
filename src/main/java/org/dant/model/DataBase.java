@@ -11,9 +11,13 @@ public class DataBase {
     }
 
     private static class Tables {
-
         private static final Map<String,Table> TABLES = new HashMap<>();
+    }
 
+    public static Table getTable(String tableName) {
+        if (!Tables.TABLES.keySet().contains(tableName))
+            return null;
+        return Tables.TABLES.get(tableName);
     }
 
 }
