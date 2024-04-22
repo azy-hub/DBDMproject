@@ -1,10 +1,7 @@
 package org.dant;
 
 import jakarta.annotation.Nullable;
-import jakarta.ws.rs.Consumes;
-import jakarta.ws.rs.GET;
-import jakarta.ws.rs.POST;
-import jakarta.ws.rs.Path;
+import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import org.dant.model.Column;
 import org.dant.model.Condition;
@@ -45,6 +42,20 @@ public class Slave {
             res = table.getRows().parallelStream().filter(list -> table.validate(list, conditions, idx, type)).collect(Collectors.toList());
         }
         return res;
+    }
+
+    @POST
+    @Path("/addRowToTable/{name}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public void addRowToTable(@RestPath String name, List<Object> args) {
+        Table table = DataBase.get().get(name);
+        if(table == null)
+            throw new NotFoundException("La table avec le nom " + name + " n'a pas été trouvée.");
+        if(args.size() != table.getColumns().size()) {
+            System.out.println("Nombre d'argument incorrect.");
+            return;
+        }
+        table.addRow(args);
     }
 
 }

@@ -1,9 +1,17 @@
 package org.dant.model;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.parquet.example.data.simple.SimpleGroup;
+
 import java.math.BigDecimal;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class Table {
 
@@ -11,6 +19,8 @@ public class Table {
     private List<Column> columns;
 
     private List<List<Object>> rows;
+
+    private final SpinLock lockAdd = new SpinLock();
 
     public Table() {
     }
@@ -30,7 +40,12 @@ public class Table {
     }
 
     public void addRow(List<Object> row) {
-        rows.add(row);
+        lockAdd.lock();
+        try {
+            rows.add(row);
+        } finally {
+            lockAdd.unlock();
+        }
     }
 
     public String getName() {
@@ -99,5 +114,54 @@ public class Table {
                 return false;
         }
         return true;
+    }
+
+    public List<Object> transform(List<Object> row) {
+        List<Object> list = new ArrayList<>();
+        for(int i=0; i<columns.size(); i++) {
+            try {
+                switch (columns.get(i).getType()) {
+                    case "BINARY":
+                        list.add( new String((byte[]) row.get(i), StandardCharsets.UTF_8));
+                        break;
+                    case "INT64":
+                        list.add(row.get(i));
+                        break;
+                    case "DOUBLE":
+                        list.add(ByteBuffer.wrap((byte[]) row.get(i)).getDouble());
+                        break;
+                    default:
+                        break;
+                }
+            } catch (RuntimeException e) {
+                list.add(null);
+            }
+        }
+        return list;
+    }
+
+    public void addRowFromSimpleGroup(SimpleGroup simpleGroup) {
+        List<Object> list = new ArrayList<>();
+        for (Column column : getColumns()) {
+            try {
+                switch (column.getType()) {
+                    case "DOUBLE":
+                        list.add((ByteBuffer.allocate(Double.BYTES).putDouble(simpleGroup.getDouble(column.getName(), 0)).array().clone()));
+                        break;
+                    case "BINARY":
+                        list.add(simpleGroup.getBinary(column.getName(), 0).getBytes());
+                        break;
+                    case "INT64":
+                        list.add((byte) simpleGroup.getLong(column.getName(), 0));
+                        break;
+                    default:
+                        list.add(null);
+                        break;
+                }
+            } catch (RuntimeException e) {
+                list.add(null);
+            }
+        }
+        addRow(list);
     }
 }

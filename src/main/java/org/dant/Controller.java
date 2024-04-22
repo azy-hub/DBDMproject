@@ -6,9 +6,6 @@ import jakarta.annotation.Nullable;
 import jakarta.ws.rs.*;
 
 import jakarta.ws.rs.core.MediaType;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.parquet.ParquetReadOptions;
@@ -18,15 +15,10 @@ import org.apache.parquet.example.data.Group;
 import org.apache.parquet.example.data.simple.SimpleGroup;
 import org.apache.parquet.example.data.simple.convert.GroupRecordConverter;
 import org.apache.parquet.hadoop.ParquetFileReader;
-import org.apache.parquet.hadoop.ParquetReader;
-import org.apache.parquet.hadoop.api.ReadSupport;
-import org.apache.parquet.hadoop.example.GroupReadSupport;
 import org.apache.parquet.hadoop.metadata.ParquetMetadata;
 import org.apache.parquet.hadoop.util.HadoopInputFile;
 import org.apache.parquet.io.ColumnIOFactory;
-import org.apache.parquet.io.MessageColumnIO;
 import org.apache.parquet.io.RecordReader;
-import org.apache.parquet.io.api.RecordMaterializer;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.parquet.schema.MessageType;
@@ -44,8 +36,12 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 
@@ -55,13 +51,12 @@ public class Controller {
     @POST
     @Path("/parquet/createTable/{tableName}")
     @Consumes(MediaType.APPLICATION_OCTET_STREAM)
-    public String parseParquet(@RestPath String tableName, InputStream inputStream) {
+    public String parseParquet(@RestPath String tableName, InputStream inputStream) throws IOException {
         Configuration conf = new Configuration();
         FileSystem fs;
         org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path("temp.parquet");
         try {
             fs = FileSystem.get(conf);
-            // Copier le contenu de l'inputStream dans un fichier parquet temporaire
             try (FSDataOutputStream outputStream = fs.create(path)) {
                 IOUtils.copy(inputStream, outputStream);
             }
@@ -94,7 +89,7 @@ public class Controller {
     @POST
     @Path("/parquet/fillTable/{tableName}")
     @Consumes(MediaType.APPLICATION_OCTET_STREAM)
-    public void readParquet(@RestPath String tableName, InputStream inputStream) {
+    public void readParquet(@RestPath String tableName, InputStream inputStream) throws IOException {
         Configuration conf = new Configuration();
         Table table = DataBase.get().get(tableName);
         if (table == null)
@@ -113,37 +108,34 @@ public class Controller {
             ParquetMetadata footer = parquetFileReader.getFooter();
             MessageType schema = footer.getFileMetaData().getSchema();
             PageReadStore pages;
+
+            ExecutorService executorService = Executors.newFixedThreadPool(3);
             while ((pages = parquetFileReader.readNextRowGroup()) != null) {
                 long rows = pages.getRowCount();
                 RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
-                System.out.println(rows);
-                for (int row = 0; row < 50; row++) {
-                    int fieldIndex = 0;
-                    SimpleGroup simpleGroup = (SimpleGroup) recordReader.read();
-                    List<Object> list = new ArrayList<>();
-                    for (Column column : table.getColumns()) {
+                RecordReader<Group> recordReader2 = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
+                final SpinLock lock = new SpinLock();
+                for (int row = 0; row < 1000000; row++) {
+                    executorService.submit( () -> {
+                        lock.lock();
+                        SimpleGroup simpleGroup;
                         try {
-                            switch (column.getType()) {
-                                case "BINARY":
-                                    list.add(simpleGroup.getBinary(fieldIndex, 0).toStringUsingUTF8());
-                                    break;
-                                case "INT64":
-                                    list.add(simpleGroup.getLong(fieldIndex, 0));
-                                    break;
-                                case "DOUBLE":
-                                    list.add(simpleGroup.getDouble(fieldIndex, 0));
-                                    break;
-                                default:
-                                    list.add(null);
-                                    break;
-                            }
-                        } catch (RuntimeException e) {
-                            list.add(null);
+                            simpleGroup = (SimpleGroup) recordReader.read();
+                        } finally {
+                            lock.unlock();
                         }
-                        fieldIndex++;
-                    }
-                    table.addRow(list);
+                        table.addRowFromSimpleGroup(simpleGroup);
+                    });
                 }
+            }
+            executorService.shutdown();
+            try {
+                // Attend que toutes les tâches soient terminées ou jusqu'à 30 minutes
+                if (!executorService.awaitTermination(30, TimeUnit.MINUTES)) {
+                    System.out.println("30 Minutes écoulées, remplissage de la base de données pas fini.");
+                }
+            } catch (InterruptedException e) {
+                System.out.println("Intérruption lors du remplissage de la table");
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -175,16 +167,16 @@ public class Controller {
         }
     }
 
-    @POST
+    @GET
     @Path("/DataBase")
     public String getAllTables() {
         StringBuilder stringBuilder = new StringBuilder("Les Tables sont : \n");
         Map<String, Table> map = DataBase.get();
         for(String name : map.keySet()) {
-            stringBuilder.append("Table ").append(name).append(" :\n");
+            stringBuilder.append("\nTable ").append(name).append(" :\n");
             List<Column> columns = map.get(name).getColumns();
             for( Column c : columns ) {
-                stringBuilder.append("Colonne : ").append(c.getName()).append(", Type : ").append(c.getType());
+                stringBuilder.append("Colonne : ").append(c.getName()).append(", Type : ").append(c.getType()).append("\n");
             }
         }
         return stringBuilder.toString();
@@ -193,19 +185,17 @@ public class Controller {
     @POST
     @Path("/createTable/{name}")
     @Consumes(MediaType.APPLICATION_JSON)
-    public void createTable(@RestPath String name,@Nullable List<Column> listColumns) {
-        System.out.println("Create table "+name);
-        if (DataBase.get().containsKey(name)) {
-            System.out.println("Table already exists with name : "+name);
-            return;
+    public String createTable(@RestPath String tablName,@Nullable List<Column> listColumns) {
+        if (DataBase.get().containsKey(tablName)) {
+            return "Table already exists with name : "+tablName;
         }
-        //forwardCreateTable("172.20.10.2",name,listColumns);
-        //forwardCreateTable("172.20.10.4",name,listColumns);
         if( listColumns.isEmpty() )
-            new Table(name);
+            new Table(tablName);
         else
-            new Table(name, listColumns);
-        System.out.println("Table created successfully");
+            new Table(tablName, listColumns);
+        //forwardCreateTable("",tablName,listColumns);
+        //forwardCreateTable("",tablName,listColumns);
+        return "Table created successfully";
     }
 
     private void forwardCreateTable(String ipAddress, String name, List<Column> columns) {
@@ -249,11 +239,14 @@ public class Controller {
                 }
             });
         if (conditions == null || conditions.isEmpty()) {
-            res = table.getRows();
+            res = table.getRows().parallelStream().map(table::transform)
+                    .collect(Collectors.toList());;
         } else {
             List<Integer> idx = table.getIndexOfColumnsByConditions(conditions);
             List<String> type = idx.stream().map(indice -> table.getColumns().get(indice).getType()).toList();
-            res = table.getRows().parallelStream().filter(list -> table.validate(list, conditions, idx, type)).collect(Collectors.toList());
+            res = table.getRows().parallelStream().filter(list -> table.validate(list, conditions, idx, type))
+                    .map(table::transform)
+                    .collect(Collectors.toList());
         }
         /*try {
             res.addAll(future1.get());
