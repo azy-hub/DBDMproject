@@ -12,6 +12,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
 
 public class Table {
 
@@ -58,6 +59,13 @@ public class Table {
 
     public List<Column> getColumns() {
         return columns;
+    }
+
+    public List<Column> getColumnsByNames(List<String> list) {
+        if (list.contains("*")) {
+            return columns;
+        }
+        return columns.stream().filter( column -> list.contains(column.getName()) ).collect(Collectors.toList());
     }
 
     public void setColumns(List<Column> columns) {
@@ -116,19 +124,19 @@ public class Table {
         return true;
     }
 
-    public List<Object> transform(List<Object> row) {
+    public List<Object> transform(List<Object> row, List<Column> columnList) {
         List<Object> list = new ArrayList<>();
-        for(int i=0; i<columns.size(); i++) {
+        for(Column column: columnList) {
             try {
-                switch (columns.get(i).getType()) {
+                switch (column.getType()) {
                     case "BINARY":
-                        list.add( new String((byte[]) row.get(i), StandardCharsets.UTF_8));
+                        list.add( new String((byte[]) row.get(columns.indexOf(column)), StandardCharsets.UTF_8));
                         break;
                     case "INT64":
-                        list.add(row.get(i));
+                        list.add(row.get(columns.indexOf(column)));
                         break;
                     case "DOUBLE":
-                        list.add(ByteBuffer.wrap((byte[]) row.get(i)).getDouble());
+                        list.add(ByteBuffer.wrap((byte[]) row.get(columns.indexOf(column))).getDouble());
                         break;
                     default:
                         break;
@@ -163,5 +171,22 @@ public class Table {
             }
         }
         addRow(list);
+    }
+
+    public List<List<Object>> select(SelectMethod selectMethod) {
+        List<List<Object>> res;
+        List<Column> columnList = getColumnsByNames(selectMethod.getSELECT());
+        if (selectMethod.getWHERE() == null || selectMethod.getWHERE().isEmpty()) {
+            res = getRows().parallelStream()
+                    .map( row -> transform(row,columnList) )
+                    .collect(Collectors.toList());;
+        } else {
+            List<Integer> idx = getIndexOfColumnsByConditions(selectMethod.getWHERE());
+            List<String> type = idx.stream().map(indice -> getColumns().get(indice).getType()).toList();
+            res = getRows().parallelStream().filter(list -> validate(list, selectMethod.getWHERE(), idx, type))
+                    .map( row -> transform(row,columnList) )
+                    .collect(Collectors.toList());
+        }
+        return res;
     }
 }

@@ -113,9 +113,8 @@ public class Controller {
             while ((pages = parquetFileReader.readNextRowGroup()) != null) {
                 long rows = pages.getRowCount();
                 RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
-                RecordReader<Group> recordReader2 = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
                 final SpinLock lock = new SpinLock();
-                for (int row = 0; row < 1000000; row++) {
+                for (int row = 0; row < 500; row++) {
                     executorService.submit( () -> {
                         lock.lock();
                         SimpleGroup simpleGroup;
@@ -130,7 +129,6 @@ public class Controller {
             }
             executorService.shutdown();
             try {
-                // Attend que toutes les tâches soient terminées ou jusqu'à 30 minutes
                 if (!executorService.awaitTermination(30, TimeUnit.MINUTES)) {
                     System.out.println("30 Minutes écoulées, remplissage de la base de données pas fini.");
                 }
@@ -183,16 +181,16 @@ public class Controller {
     }
 
     @POST
-    @Path("/createTable/{name}")
+    @Path("/createTable/{tableName}")
     @Consumes(MediaType.APPLICATION_JSON)
-    public String createTable(@RestPath String tablName,@Nullable List<Column> listColumns) {
-        if (DataBase.get().containsKey(tablName)) {
-            return "Table already exists with name : "+tablName;
+    public String createTable(@RestPath String tableName,List<Column> listColumns) {
+        if (DataBase.get().containsKey(tableName)) {
+            return "Table already exists with name : "+tableName;
         }
         if( listColumns.isEmpty() )
-            new Table(tablName);
+            return "Columns are empty";
         else
-            new Table(tablName, listColumns);
+            new Table(tableName, listColumns);
         //forwardCreateTable("",tablName,listColumns);
         //forwardCreateTable("",tablName,listColumns);
         return "Table created successfully";
@@ -215,39 +213,35 @@ public class Controller {
         }
     }
 
-    @POST
-    @Path("/select/{tableName}")
+    @GET
+    @Path("/select")
+    @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public List<List<Object>> getTableContent(@RestPath("tableName") String tableName,@Nullable List<Condition> conditions) {
-        Table table = DataBase.get().get(tableName);
+    public List<List<Object>> getTableContent(SelectMethod selectMethod) {
+        Table table = DataBase.get().get(selectMethod.getFROM());
         if (table == null)
-            throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
-        List<List<Object>> res = new LinkedList<>();
-        if (!table.checkConditions(conditions))
-            return res;
+            throw new NotFoundException("La table avec le nom " + selectMethod.getFROM() + " n'a pas été trouvée.");
+        if (!table.checkConditions(selectMethod.getWHERE())) {
+            throw new NotFoundException("No condition found");
+        }
+        List<Column> columns = table.getColumnsByNames(selectMethod.getSELECT());
+        if (columns.isEmpty()) {
+            throw new NotFoundException("No columns matching with any of this names " + selectMethod.getSELECT());
+        }
         ExecutorService executorService = Executors.newFixedThreadPool(2);
         Future<List<List<Object>>> future1 = executorService.submit(new Callable<List<List<Object>>>() {
                 @Override
                 public List<List<Object>> call() {
-                    return forwardGetTableContent("",tableName,conditions);
+                    return forwardGetTableContent("",selectMethod);
                 }
             });
         Future<List<List<Object>>> future2 = executorService.submit(new Callable<List<List<Object>>>() {
                 @Override
                 public List<List<Object>> call() {
-                    return forwardGetTableContent("",tableName,conditions);
+                    return forwardGetTableContent("",selectMethod);
                 }
             });
-        if (conditions == null || conditions.isEmpty()) {
-            res = table.getRows().parallelStream().map(table::transform)
-                    .collect(Collectors.toList());;
-        } else {
-            List<Integer> idx = table.getIndexOfColumnsByConditions(conditions);
-            List<String> type = idx.stream().map(indice -> table.getColumns().get(indice).getType()).toList();
-            res = table.getRows().parallelStream().filter(list -> table.validate(list, conditions, idx, type))
-                    .map(table::transform)
-                    .collect(Collectors.toList());
-        }
+        List<List<Object>> res = table.select(selectMethod);
         /*try {
             res.addAll(future1.get());
             res.addAll(future2.get());
@@ -258,12 +252,12 @@ public class Controller {
         return res;
     }
 
-    private List<List<Object>> forwardGetTableContent(String ipAddress, String name, List<Condition> conditions) {
+    private List<List<Object>> forwardGetTableContent(String ipAddress,SelectMethod selectMethod) {
         int serverPort = 8080;
-        String endpoint = "/slave/select/"+name;
+        String endpoint = "/slave/select";
         String url = "http://" + ipAddress + ":" + serverPort + endpoint;
         Gson gson = new Gson();
-        String jsonBody = gson.toJson(conditions);
+        String jsonBody = gson.toJson(selectMethod);
         HttpClient httpClient = HttpClient.newHttpClient();
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
