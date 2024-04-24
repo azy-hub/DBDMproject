@@ -51,25 +51,25 @@ public class Condition {
                 if ( type.equals("BINARY") )
                     return ((String)this.value).compareTo((String) list.get(index)) < 0;
                 if ( type.equals("INT64") )
-                    return ((BigDecimal)this.value).byteValue() < (byte)list.get(index);
+                    return ((BigDecimal)this.value).compareTo( (BigDecimal) list.get(index)) < 0;
                 if ( type.equals("DOUBLE") )
-                    return ((BigDecimal)this.value).doubleValue() < (Double)list.get(index);
+                    return ((BigDecimal)this.value).compareTo( (BigDecimal) list.get(index)) < 0;
                 break;
             case "=":
                 if ( type.equals("BINARY") )
                     return (this.value).equals(list.get(index));
                 if ( type.equals("INT64") )
-                    return ((BigDecimal)this.value).byteValue() == (byte) list.get(index);
+                    return ((BigDecimal)this.value).compareTo((BigDecimal) list.get(index)) == 0;
                 if ( type.equals("DOUBLE") )
-                    return ((BigDecimal)this.value).doubleValue() == (Double)list.get(index);
+                    return ((BigDecimal)this.value).compareTo((BigDecimal) list.get(index)) == 0;
                 break;
             case "<":
                 if ( type.equals("BINARY") )
                     return ((String)this.value).compareTo((String) list.get(index)) > 0;
                 if ( type.equals("INT64") )
-                    return ((BigDecimal)this.value).byteValue() > (byte)list.get(index);
+                    return ((BigDecimal)this.value).compareTo( (BigDecimal) list.get(index)) > 0;
                 if ( type.equals("DOUBLE") )
-                    return ((BigDecimal)this.value).doubleValue() > (Double)list.get(index);
+                    return ((BigDecimal)this.value).compareTo( (BigDecimal) list.get(index)) > 0;
                 break;
             default:
                 break;

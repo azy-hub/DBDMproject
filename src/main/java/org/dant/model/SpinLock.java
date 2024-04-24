@@ -3,14 +3,14 @@ package org.dant.model;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class SpinLock {
-    public static AtomicBoolean atomicBoolean = new AtomicBoolean(true);
+    private final AtomicBoolean lock = new AtomicBoolean(true);
 
     public void lock() {
-        while (!atomicBoolean.compareAndSet(true,false)) {
+        while (!lock.compareAndSet(true,false)) {
         }
     }
 
     public void unlock() {
-        atomicBoolean.compareAndSet(false,true);
+        lock.compareAndSet(false,true);
     }
 }

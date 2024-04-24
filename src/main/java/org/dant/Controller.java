@@ -48,6 +48,11 @@ import java.util.stream.Collectors;
 @Path("/v1")
 public class Controller {
 
+    private final ExecutorService executorService = Executors.newCachedThreadPool();
+
+    private String addressIp1 = "";
+    private String addressIp2 = "";
+
     @POST
     @Path("/parquet/createTable/{tableName}")
     @Consumes(MediaType.APPLICATION_OCTET_STREAM)
@@ -125,6 +130,26 @@ public class Controller {
                         }
                         table.addRowFromSimpleGroup(simpleGroup);
                     });
+                    executorService.submit( () -> {
+                        lock.lock();
+                        SimpleGroup simpleGroup;
+                        try {
+                            simpleGroup = (SimpleGroup) recordReader.read();
+                        } finally {
+                            lock.unlock();
+                        }
+                        table.forwardRowFromSimpleGroup(simpleGroup,addressIp1);
+                    });
+                    /*executorService.submit( () -> {
+                        lock.lock();
+                        SimpleGroup simpleGroup;
+                        try {
+                            simpleGroup = (SimpleGroup) recordReader.read();
+                        } finally {
+                            lock.unlock();
+                        }
+                        table.forwardRowFromSimpleGroup(simpleGroup,"");
+                    });*/
                 }
             }
             executorService.shutdown();
@@ -146,23 +171,6 @@ public class Controller {
             }
         }
         System.out.println("FINI !");
-    }
-
-    private void forwardRowToTable(String ipAddress, String name, List<List<Object>> row) {
-        String url = "https://" + ipAddress + ":" + 8080 +"/slave/addRowToTable/"+name;
-        HttpClient httpClient = HttpClient.newHttpClient();
-        Gson gson = new Gson();
-        String jsonBody = gson.toJson(row);
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                .build();
-        try {
-            httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding());
-        } catch (Exception e) {
-            System.out.println("Erreur in forwarding row to other slave node");
-        }
     }
 
     @GET
@@ -191,26 +199,9 @@ public class Controller {
             return "Columns are empty";
         else
             new Table(tableName, listColumns);
-        //forwardCreateTable("",tablName,listColumns);
-        //forwardCreateTable("",tablName,listColumns);
+        Forwarder.forwardCreateTable(addressIp1,tableName,listColumns);
+        //Forwarder.forwardCreateTable(addressIp2,tableName,listColumns);
         return "Table created successfully";
-    }
-
-    private void forwardCreateTable(String ipAddress, String name, List<Column> columns) {
-        String url = "http://" + ipAddress + ":" + 8080 + "/slave/createTable/"+name;
-        Gson gson = new Gson();
-        String jsonBody = gson.toJson(columns);
-        HttpClient httpClient = HttpClient.newHttpClient();
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                .build();
-        try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-        } catch (Exception e) {
-            System.out.println("Erreur lors de l'envoie de la diffusion de la requête select. " + e.getMessage());
-        }
     }
 
     @GET
@@ -219,72 +210,58 @@ public class Controller {
     @Produces(MediaType.APPLICATION_JSON)
     public List<List<Object>> getTableContent(SelectMethod selectMethod) {
         Table table = DataBase.get().get(selectMethod.getFROM());
+
         if (table == null)
             throw new NotFoundException("La table avec le nom " + selectMethod.getFROM() + " n'a pas été trouvée.");
+
         if (!table.checkConditions(selectMethod.getWHERE())) {
             throw new NotFoundException("No condition found");
         }
-        List<Column> columns = table.getColumnsByNames(selectMethod.getSELECT());
-        if (columns.isEmpty()) {
+
+        if (table.getColumnsByNames(selectMethod.getSELECT()).isEmpty()) {
             throw new NotFoundException("No columns matching with any of this names " + selectMethod.getSELECT());
         }
-        ExecutorService executorService = Executors.newFixedThreadPool(2);
-        Future<List<List<Object>>> future1 = executorService.submit(new Callable<List<List<Object>>>() {
-                @Override
-                public List<List<Object>> call() {
-                    return forwardGetTableContent("",selectMethod);
-                }
-            });
-        Future<List<List<Object>>> future2 = executorService.submit(new Callable<List<List<Object>>>() {
-                @Override
-                public List<List<Object>> call() {
-                    return forwardGetTableContent("",selectMethod);
-                }
-            });
+
+        Future<List<List<Object>>> future1 = executorService.submit( () -> Forwarder.forwardGetTableContent(addressIp1,selectMethod));
+        //Future<List<List<Object>>> future2 = executorService.submit( () -> Forwarder.forwardGetTableContent(addressIp2,selectMethod));
         List<List<Object>> res = table.select(selectMethod);
-        /*try {
+        try {
             res.addAll(future1.get());
-            res.addAll(future2.get());
+            //res.addAll(future2.get());
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
-        }*/
+        }
         System.out.println(res.size());
         return res;
     }
 
-    private List<List<Object>> forwardGetTableContent(String ipAddress,SelectMethod selectMethod) {
-        int serverPort = 8080;
-        String endpoint = "/slave/select";
-        String url = "http://" + ipAddress + ":" + serverPort + endpoint;
-        Gson gson = new Gson();
-        String jsonBody = gson.toJson(selectMethod);
-        HttpClient httpClient = HttpClient.newHttpClient();
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Content-Type", "text/plain")
-                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                .build();
-        try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            Type listType = new TypeToken<List<List<Object>>>(){}.getType();
-            return gson.fromJson(response.body(), listType);
-        } catch (Exception e) {
-            System.out.println("Erreur lors de l'envoie de la diffusion de la requête select. " + e.getMessage());
-        }
-        return null;
-    }
-
     @POST
-    @Path("/addRowToTable/{name}")
+    @Path("/insertOneRow/{name}")
     @Consumes(MediaType.APPLICATION_JSON)
-    public void addRowToTable(@RestPath String name, List<Object> args) {
+    public void insertOneRow(@RestPath String name, List<Object> args) {
         Table table = DataBase.get().get(name);
         if(table == null)
             throw new NotFoundException("La table avec le nom " + name + " n'a pas été trouvée.");
         if(args.size() != table.getColumns().size()) {
-            System.out.println("Nombre d'argument incorrect.");
-            return;
+            throw new IllegalArgumentException("Nombre d'argument incorrect.");
         }
         table.addRow(args);
+    }
+
+    @POST
+    @Path("/insertRows/{tableName}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public String insertRows(@RestPath String tableName, List<List<Object>> listArgs) {
+        Table table = DataBase.get().get(tableName);
+        if(table == null)
+            throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
+        if( !listArgs.stream().allMatch( list -> list.size() == table.getColumns().size() ) )
+            throw new NotFoundException("Nombre d'arguments invalide dans l'une des lignes.");
+        Forwarder.forwardRowsToTable(addressIp1,tableName,listArgs.subList(0, listArgs.size()/2));
+        // Forwarder.forwardRowToTable("",tableName,listArgs.subList(listArgs.size()/3, 2*listArgs.size()/3));
+        // table.addAllRows(listArgs.subList(2*listArgs.size()/3, listArgs.size() ));
+        table.addAllRows(listArgs.subList(listArgs.size()/2, listArgs.size()));
+        return "Rows added successfully !";
     }
 }

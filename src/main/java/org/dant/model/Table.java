@@ -2,6 +2,7 @@ package org.dant.model;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.parquet.example.data.simple.SimpleGroup;
+import org.dant.Forwarder;
 
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
@@ -44,6 +45,15 @@ public class Table {
         lockAdd.lock();
         try {
             rows.add(row);
+        } finally {
+            lockAdd.unlock();
+        }
+    }
+
+    public void addAllRows(List<List<Object>> rows) {
+        lockAdd.lock();
+        try {
+            this.rows.addAll(rows);
         } finally {
             lockAdd.unlock();
         }
@@ -125,27 +135,7 @@ public class Table {
     }
 
     public List<Object> transform(List<Object> row, List<Column> columnList) {
-        List<Object> list = new ArrayList<>();
-        for(Column column: columnList) {
-            try {
-                switch (column.getType()) {
-                    case "BINARY":
-                        list.add( new String((byte[]) row.get(columns.indexOf(column)), StandardCharsets.UTF_8));
-                        break;
-                    case "INT64":
-                        list.add(row.get(columns.indexOf(column)));
-                        break;
-                    case "DOUBLE":
-                        list.add(ByteBuffer.wrap((byte[]) row.get(columns.indexOf(column))).getDouble());
-                        break;
-                    default:
-                        break;
-                }
-            } catch (RuntimeException e) {
-                list.add(null);
-            }
-        }
-        return list;
+        return columnList.stream().map( column -> row.get(columns.indexOf(column)) ).collect(Collectors.toList());
     }
 
     public void addRowFromSimpleGroup(SimpleGroup simpleGroup) {
@@ -154,13 +144,13 @@ public class Table {
             try {
                 switch (column.getType()) {
                     case "DOUBLE":
-                        list.add((ByteBuffer.allocate(Double.BYTES).putDouble(simpleGroup.getDouble(column.getName(), 0)).array().clone()));
+                        list.add(simpleGroup.getDouble(column.getName(),0));
                         break;
                     case "BINARY":
-                        list.add(simpleGroup.getBinary(column.getName(), 0).getBytes());
+                        list.add(simpleGroup.getString(column.getName(), 0));
                         break;
                     case "INT64":
-                        list.add((byte) simpleGroup.getLong(column.getName(), 0));
+                        list.add(simpleGroup.getLong(column.getName(), 0));
                         break;
                     default:
                         list.add(null);
@@ -173,9 +163,35 @@ public class Table {
         addRow(list);
     }
 
+    public void forwardRowFromSimpleGroup(SimpleGroup simpleGroup, String ipAddress) {
+        List<Object> list = new ArrayList<>();
+        for (Column column : getColumns()) {
+            try {
+                switch (column.getType()) {
+                    case "DOUBLE":
+                        list.add(simpleGroup.getDouble(column.getName(),0));
+                        break;
+                    case "BINARY":
+                        list.add(simpleGroup.getString(column.getName(), 0));
+                        break;
+                    case "INT64":
+                        list.add(simpleGroup.getLong(column.getName(), 0));
+                        break;
+                    default:
+                        list.add(null);
+                        break;
+                }
+            } catch (RuntimeException e) {
+                list.add(null);
+            }
+        }
+        Forwarder.forwardRowToTable(ipAddress, getName(), list);
+    }
+
     public List<List<Object>> select(SelectMethod selectMethod) {
         List<List<Object>> res;
         List<Column> columnList = getColumnsByNames(selectMethod.getSELECT());
+
         if (selectMethod.getWHERE() == null || selectMethod.getWHERE().isEmpty()) {
             res = getRows().parallelStream()
                     .map( row -> transform(row,columnList) )
@@ -183,6 +199,7 @@ public class Table {
         } else {
             List<Integer> idx = getIndexOfColumnsByConditions(selectMethod.getWHERE());
             List<String> type = idx.stream().map(indice -> getColumns().get(indice).getType()).toList();
+
             res = getRows().parallelStream().filter(list -> validate(list, selectMethod.getWHERE(), idx, type))
                     .map( row -> transform(row,columnList) )
                     .collect(Collectors.toList());
