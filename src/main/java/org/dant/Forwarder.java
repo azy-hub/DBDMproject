@@ -11,28 +11,32 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 public class Forwarder {
 
-    public static void forwardRowsToTable(String ipAddress, String name, List<List<Object>> row) {
-        String url = "https://" + ipAddress + ":" + 8080 +"/slave/insertRow/"+name;
+    public static void forwardRowsToTable(String ipAddress, String name, List<List<Object>> rows) {
+        String url = "http://" + ipAddress + ":" + 8080 + "/slave/insertRows/" + name;
         HttpClient httpClient = HttpClient.newHttpClient();
         Gson gson = new Gson();
-        String jsonBody = gson.toJson(row);
+        String jsonBody = gson.toJson(rows);
+        System.out.println(jsonBody);
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
         try {
-            httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding());
+            CompletableFuture<HttpResponse<Void>> response = httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding());
+            System.out.println(response.get().statusCode());
+            System.out.println(response.get().toString());
         } catch (Exception e) {
             System.out.println("Erreur in forwarding row to other slave node");
         }
     }
 
     public static void forwardRowToTable(String ipAddress, String name, List<Object> row) {
-        String url = "https://" + ipAddress + ":" + 8080 +"/slave/insertOneRow/"+name;
+        String url = new StringBuilder().append("http://").append(ipAddress).append(":").append(8080).append("/slave/insertOneRow/").append(name).toString();
         HttpClient httpClient = HttpClient.newHttpClient();
         Gson gson = new Gson();
         String jsonBody = gson.toJson(row);
@@ -49,7 +53,7 @@ public class Forwarder {
     }
 
     public static void forwardCreateTable(String ipAddress, String name, List<Column> columns) {
-        String url = "http://" + ipAddress + ":" + 8080 + "/slave/createTable/"+name;
+        String url = new StringBuilder().append("http://").append(ipAddress).append(":").append(8080).append("/slave/createTable/").append(name).toString();
         Gson gson = new Gson();
         String jsonBody = gson.toJson(columns);
         HttpClient httpClient = HttpClient.newHttpClient();
@@ -72,11 +76,12 @@ public class Forwarder {
         HttpClient httpClient = HttpClient.newHttpClient();
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
-                .header("Content-Type", "text/plain")
+                .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            System.out.println(response.toString());
             Type listType = new TypeToken<List<List<Object>>>(){}.getType();
             return gson.fromJson(response.body(), listType);
         } catch (Exception e) {

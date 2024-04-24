@@ -94,13 +94,14 @@ public class Table {
         for(Column column : columns) {
             if (condition.getNameColumn().equals(column.getName())) {
                 switch (column.getType()) {
-                    case "BINARY":
+                    case TypeDB.DOUBLE:
+                        return condition.getValue() instanceof BigDecimal;
+                    case TypeDB.STRING:
                         return condition.getValue() instanceof String;
-                    case "INT64":
+                    case TypeDB.LONG:
                         if (condition.getValue() instanceof BigDecimal)
                             return ((BigDecimal)condition.getValue()).stripTrailingZeros().scale() <= 0;
-                    case "DOUBLE":
-                        return condition.getValue() instanceof BigDecimal;
+
                     default:
                         break;
                 }
@@ -143,13 +144,13 @@ public class Table {
         for (Column column : getColumns()) {
             try {
                 switch (column.getType()) {
-                    case "DOUBLE":
+                    case TypeDB.DOUBLE:
                         list.add(simpleGroup.getDouble(column.getName(),0));
                         break;
-                    case "BINARY":
+                    case TypeDB.STRING:
                         list.add(simpleGroup.getString(column.getName(), 0));
                         break;
-                    case "INT64":
+                    case TypeDB.LONG:
                         list.add(simpleGroup.getLong(column.getName(), 0));
                         break;
                     default:
@@ -168,13 +169,13 @@ public class Table {
         for (Column column : getColumns()) {
             try {
                 switch (column.getType()) {
-                    case "DOUBLE":
+                    case TypeDB.DOUBLE:
                         list.add(simpleGroup.getDouble(column.getName(),0));
                         break;
-                    case "BINARY":
+                    case TypeDB.STRING:
                         list.add(simpleGroup.getString(column.getName(), 0));
                         break;
-                    case "INT64":
+                    case TypeDB.LONG:
                         list.add(simpleGroup.getLong(column.getName(), 0));
                         break;
                     default:
@@ -205,5 +206,39 @@ public class Table {
                     .collect(Collectors.toList());
         }
         return res;
+    }
+
+    public List<Object> castRow(List<Object> args) {
+        List<Object> list = new ArrayList<>(columns.size());
+        for(int i=0; i<columns.size(); i++) {
+            try {
+                switch (columns.get(i).getType()) {
+                    case TypeDB.DOUBLE:
+                        list.add( ((BigDecimal)args.get(i)).doubleValue() );
+                        break;
+                    case TypeDB.STRING:
+                        list.add( args.get(i) );
+                        break;
+                    case TypeDB.LONG:
+                        list.add( ((BigDecimal)args.get(i)).longValue() );
+                        break;
+                    case TypeDB.INT:
+                        list.add( ((BigDecimal)args.get(i)).intValue() );
+                        break;
+                    case TypeDB.SHORT:
+                        list.add( ((BigDecimal)args.get(i)).shortValue() );
+                        break;
+                    case TypeDB.BYTE:
+                        list.add( ((BigDecimal)args.get(i)).byteValue() );
+                        break;
+                    default:
+                        list.add(null);
+                        break;
+                }
+            } catch (RuntimeException e) {
+                list.add(null);
+            }
+        }
+        return list;
     }
 }

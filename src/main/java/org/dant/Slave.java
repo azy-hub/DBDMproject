@@ -16,21 +16,24 @@ public class Slave {
     @POST
     @Path("/createTable/{tableName}")
     @Consumes(MediaType.APPLICATION_JSON)
-    public String createTable(@RestPath String tableName, List<Column> listColumns) {
+    public void createTable(@RestPath String tableName, List<Column> listColumns) {
         if (DataBase.get().containsKey(tableName)) {
-            return "Table already exists with name : "+tableName;
+            System.out.println( "Table already exists with name : "+tableName);
+            return;
         }
-        if( listColumns.isEmpty() )
-            return "Columns are empty";
-        else
-            new Table(tableName, listColumns);
-        return "Table created successfully";
+        if( listColumns.isEmpty() ) {
+            System.out.println("Columns are empty");
+            return;
+        }
+        new Table(tableName, listColumns);
+        System.out.println("Table created successfully");
     }
 
     @POST
     @Path("/select")
     @Consumes(MediaType.APPLICATION_JSON)
     public List<List<Object>> getContent(SelectMethod selectMethod) {
+        System.out.println("Select "+selectMethod.getSELECT()+", FROM "+selectMethod.getFROM());
         return DataBase.get().get(selectMethod.getFROM()).select(selectMethod);
     }
 
@@ -58,6 +61,7 @@ public class Slave {
             throw new NotFoundException("Nombre d'arguments invalide dans l'une des lignes.");
 
         table.addAllRows(listArgs);
+        System.out.println(listArgs.size()+" rows added !");
     }
 
 }

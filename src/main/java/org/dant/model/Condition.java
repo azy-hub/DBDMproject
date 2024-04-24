@@ -48,28 +48,88 @@ public class Condition {
             return false;
         switch (this.op) {
             case ">":
-                if ( type.equals("BINARY") )
+                if ( type.equals(TypeDB.STRING) )
                     return ((String)this.value).compareTo((String) list.get(index)) < 0;
-                if ( type.equals("INT64") )
-                    return ((BigDecimal)this.value).compareTo( (BigDecimal) list.get(index)) < 0;
-                if ( type.equals("DOUBLE") )
-                    return ((BigDecimal)this.value).compareTo( (BigDecimal) list.get(index)) < 0;
+                if ( type.equals(TypeDB.DOUBLE) )
+                    return ((BigDecimal)this.value).doubleValue() < (double) list.get(index);
+                if ( type.equals(TypeDB.LONG) )
+                    return ((BigDecimal)this.value).doubleValue() < (long) list.get(index);
+                if ( type.equals(TypeDB.INT) )
+                    return ((BigDecimal)this.value).intValue() < (int) list.get(index);
+                if ( type.equals(TypeDB.SHORT) )
+                    return ((BigDecimal)this.value).shortValue() < (short) list.get(index);
+                if ( type.equals(TypeDB.BYTE) )
+                    return ((BigDecimal)this.value).byteValue() < (byte) list.get(index);
                 break;
             case "=":
-                if ( type.equals("BINARY") )
+                if ( type.equals(TypeDB.STRING) )
                     return (this.value).equals(list.get(index));
-                if ( type.equals("INT64") )
-                    return ((BigDecimal)this.value).compareTo((BigDecimal) list.get(index)) == 0;
-                if ( type.equals("DOUBLE") )
-                    return ((BigDecimal)this.value).compareTo((BigDecimal) list.get(index)) == 0;
+                if ( type.equals(TypeDB.DOUBLE) )
+                    return ((BigDecimal)this.value).doubleValue() == (double) list.get(index);
+                if ( type.equals(TypeDB.LONG) )
+                    return ((BigDecimal)this.value).doubleValue() == (long) list.get(index);
+                if ( type.equals(TypeDB.INT) )
+                    return ((BigDecimal)this.value).intValue() == (int) list.get(index);
+                if ( type.equals(TypeDB.SHORT) )
+                    return ((BigDecimal)this.value).shortValue() == (short) list.get(index);
+                if ( type.equals(TypeDB.BYTE) )
+                    return ((BigDecimal)this.value).byteValue() == (byte) list.get(index);
                 break;
             case "<":
-                if ( type.equals("BINARY") )
+                if ( type.equals(TypeDB.STRING) )
                     return ((String)this.value).compareTo((String) list.get(index)) > 0;
-                if ( type.equals("INT64") )
-                    return ((BigDecimal)this.value).compareTo( (BigDecimal) list.get(index)) > 0;
-                if ( type.equals("DOUBLE") )
-                    return ((BigDecimal)this.value).compareTo( (BigDecimal) list.get(index)) > 0;
+                if ( type.equals(TypeDB.DOUBLE) )
+                    return ((BigDecimal)this.value).doubleValue() > (double) list.get(index);
+                if ( type.equals(TypeDB.LONG) )
+                    return ((BigDecimal)this.value).doubleValue() > (long) list.get(index);
+                if ( type.equals(TypeDB.INT) )
+                    return ((BigDecimal)this.value).intValue() > (int) list.get(index);
+                if ( type.equals(TypeDB.SHORT) )
+                    return ((BigDecimal)this.value).shortValue() > (short) list.get(index);
+                if ( type.equals(TypeDB.BYTE) )
+                    return ((BigDecimal)this.value).byteValue() > (byte) list.get(index);
+                break;
+            case "<=":
+                if ( type.equals(TypeDB.STRING) )
+                    return ((String)this.value).compareTo((String) list.get(index)) >= 0;
+                if ( type.equals(TypeDB.DOUBLE) )
+                    return ((BigDecimal)this.value).doubleValue() >= (double) list.get(index);
+                if ( type.equals(TypeDB.LONG) )
+                    return ((BigDecimal)this.value).doubleValue() >= (long) list.get(index);
+                if ( type.equals(TypeDB.INT) )
+                    return ((BigDecimal)this.value).intValue() >= (int) list.get(index);
+                if ( type.equals(TypeDB.SHORT) )
+                    return ((BigDecimal)this.value).shortValue() >= (short) list.get(index);
+                if ( type.equals(TypeDB.BYTE) )
+                    return ((BigDecimal)this.value).byteValue() >= (byte) list.get(index);
+                break;
+            case ">=":
+                if ( type.equals(TypeDB.STRING) )
+                    return ((String)this.value).compareTo((String) list.get(index)) <= 0;
+                if ( type.equals(TypeDB.DOUBLE) )
+                    return ((BigDecimal)this.value).doubleValue() <= (double) list.get(index);
+                if ( type.equals(TypeDB.LONG) )
+                    return ((BigDecimal)this.value).doubleValue() <= (long) list.get(index);
+                if ( type.equals(TypeDB.INT) )
+                    return ((BigDecimal)this.value).intValue() <= (int) list.get(index);
+                if ( type.equals(TypeDB.SHORT) )
+                    return ((BigDecimal)this.value).shortValue() <= (short) list.get(index);
+                if ( type.equals(TypeDB.BYTE) )
+                    return ((BigDecimal)this.value).byteValue() <= (byte) list.get(index);
+                break;
+            case "!=":
+                if ( type.equals(TypeDB.STRING) )
+                    return !(this.value).equals(list.get(index));
+                if ( type.equals(TypeDB.DOUBLE) )
+                    return ((BigDecimal)this.value).doubleValue() != (double) list.get(index);
+                if ( type.equals(TypeDB.LONG) )
+                    return ((BigDecimal)this.value).doubleValue() != (long) list.get(index);
+                if ( type.equals(TypeDB.INT) )
+                    return ((BigDecimal)this.value).intValue() != (int) list.get(index);
+                if ( type.equals(TypeDB.SHORT) )
+                    return ((BigDecimal)this.value).shortValue() != (short) list.get(index);
+                if ( type.equals(TypeDB.BYTE) )
+                    return ((BigDecimal)this.value).byteValue() != (byte) list.get(index);
                 break;
             default:
                 break;
