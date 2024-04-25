@@ -49,9 +49,8 @@ import java.util.stream.Collectors;
 public class Controller {
 
     private final ExecutorService executorService = Executors.newCachedThreadPool();
-
-    public static final String addressIp1 = "172.20.10.2";
-    public static final String addressIp2 = "172.20.10.4";
+    public static final String addressIp1 = "192.168.6.21";
+    public static final String addressIp2 = "192.168.6.117";
 
     @POST
     @Path("/parquet/createTable/{tableName}")
@@ -120,22 +119,47 @@ public class Controller {
                 final SpinLock lock = new SpinLock();
 
                 executorService.submit( () -> {
-                    List<List<Object>> listOfList = new LinkedList<>();
-                    for(int row=0; row<500; row++) {
-                        lock.lock();
-                        SimpleGroup simpleGroup;
-                        try {
-                            simpleGroup = (SimpleGroup) recordReader.read();
-                        } finally {
-                            lock.unlock();
+                    for(long row=0; row<rows/3;) {
+                        List<List<Object>> listOfList = new LinkedList<>();
+                        long i = 0;
+                        while (i<500000 && row < rows/3) {
+                            lock.lock();
+                            SimpleGroup simpleGroup;
+                            try {
+                                simpleGroup = (SimpleGroup) recordReader.read();
+                            } finally {
+                                lock.unlock();
+                            }
+                            listOfList.add(Utils.extractListFromGroup(simpleGroup, table.getColumns()));
+                            i++;
+                            row++;
                         }
-                        listOfList.add(Utils.extractListFromGroup(simpleGroup,table.getColumns()));
+                        Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
                     }
-                    Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
                 });
                 executorService.submit( () -> {
+                    for(long row=rows/3; row<2*(rows/3);) {
+                        List<List<Object>> listOfList = new LinkedList<>();
+                        long i = 0;
+                        while (i<500000 && row<2*(rows/3)) {
+                            lock.lock();
+                            SimpleGroup simpleGroup;
+                            try {
+                                simpleGroup = (SimpleGroup) recordReader.read();
+                            } finally {
+                                lock.unlock();
+                            }
+                            listOfList.add(Utils.extractListFromGroup(simpleGroup, table.getColumns()));
+                            i++;
+                            row++;
+                        }
+                        Forwarder.forwardRowsToTable(addressIp2,tableName,listOfList);
+                    }
+                });
+                for(long row=2*(rows/3); row<rows;) {
                     List<List<Object>> listOfList = new LinkedList<>();
-                    for(int row=0; row<500; row++) {
+                    long i = 0;
+                    while (i<500000 && row<rows) {
                         lock.lock();
                         SimpleGroup simpleGroup;
                         try {
@@ -143,29 +167,12 @@ public class Controller {
                         } finally {
                             lock.unlock();
                         }
-                        listOfList.add(Utils.extractListFromGroup(simpleGroup,table.getColumns()));
+                        listOfList.add(Utils.extractListFromGroup(simpleGroup, table.getColumns()));
+                        i++;
+                        row++;
                     }
-                    Forwarder.forwardRowsToTable(addressIp2,tableName,listOfList);
-                });
-                List<List<Object>> listOfList = new LinkedList<>();
-                for(int row=0; row<500; row++) {
-                    lock.lock();
-                    SimpleGroup simpleGroup;
-                    try {
-                        simpleGroup = (SimpleGroup) recordReader.read();
-                    } finally {
-                        lock.unlock();
-                    }
-                    listOfList.add(Utils.extractListFromGroup(simpleGroup,table.getColumns()));
+                    executorService.submit( () -> table.addAllRows(listOfList));
                 }
-                table.addAllRows(listOfList);
-            }
-            try {
-                if (!executorService.awaitTermination(30, TimeUnit.MINUTES)) {
-                    System.out.println("30 Minutes écoulées, remplissage de la base de données pas fini.");
-                }
-            } catch (InterruptedException e) {
-                System.out.println("Intérruption lors du remplissage de la table");
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -187,6 +194,7 @@ public class Controller {
         Map<String, Table> map = DataBase.get();
         for(String name : map.keySet()) {
             stringBuilder.append("\nTable ").append(name).append(" :\n");
+            stringBuilder.append("Number of lignes : ").append(map.get(name).getRows().size()).append("\n");
             List<Column> columns = map.get(name).getColumns();
             for( Column c : columns ) {
                 stringBuilder.append("Colonne : ").append(c.getName()).append(", Type : ").append(c.getType()).append("\n");
@@ -275,8 +283,8 @@ public class Controller {
             throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
         if( !listArgs.stream().allMatch( list -> list.size() == table.getColumns().size() ) )
             throw new NotFoundException("Nombre d'arguments invalide dans l'une des lignes.");
-        Forwarder.forwardRowsToTable(addressIp1,tableName,listArgs.subList(0, listArgs.size()/3));
-        Forwarder.forwardRowsToTable(addressIp2,tableName,listArgs.subList(listArgs.size()/3, 2*listArgs.size()/3));
+        executorService.submit( ()-> Forwarder.forwardRowsToTable(addressIp1,tableName,listArgs.subList(0, listArgs.size()/3)) );
+        executorService.submit( ()-> Forwarder.forwardRowsToTable(addressIp2,tableName,listArgs.subList(listArgs.size()/3, 2*listArgs.size()/3)) );
         table.addAllRows(listArgs.subList(2*listArgs.size()/3, listArgs.size()).parallelStream().map( list -> table.castRow(list)).collect(Collectors.toList()));
         return "Rows added successfully !";
     }

@@ -20,7 +20,6 @@ public class Forwarder {
         HttpClient httpClient = HttpClient.newHttpClient();
         Gson gson = new Gson();
         String jsonBody = gson.toJson(rows);
-        System.out.println(jsonBody);
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Content-Type", "application/json")
@@ -28,8 +27,6 @@ public class Forwarder {
                 .build();
         try {
             CompletableFuture<HttpResponse<Void>> response = httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding());
-            System.out.println(response.get().statusCode());
-            System.out.println(response.get().toString());
         } catch (Exception e) {
             System.out.println("Erreur in forwarding row to other slave node");
         }
@@ -65,7 +62,8 @@ public class Forwarder {
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         } catch (Exception e) {
-            System.out.println("Erreur lors de l'envoie de la diffusion de la requête select. " + e.getMessage());
+            System.out.println("url : "+url);
+            System.out.println("Erreur lors de l'envoie de la diffusion de la requête create table. " + e.getMessage());
         }
     }
 
@@ -81,7 +79,6 @@ public class Forwarder {
                 .build();
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            System.out.println(response.toString());
             Type listType = new TypeToken<List<List<Object>>>(){}.getType();
             return gson.fromJson(response.body(), listType);
         } catch (Exception e) {
