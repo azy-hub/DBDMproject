@@ -94,6 +94,8 @@ public class Controller {
     @Path("/parquet/fillTable/{tableName}")
     @Consumes(MediaType.APPLICATION_OCTET_STREAM)
     public void readParquet(@RestPath String tableName, InputStream inputStream) throws IOException {
+        executorService.submit( () -> Forwarder.forwardParquet(addressIp1,tableName,inputStream,0) );
+        executorService.submit( () -> Forwarder.forwardParquet(addressIp2,tableName,inputStream,1) );
         Configuration conf = new Configuration();
         Table table = DataBase.get().get(tableName);
         if (table == null)
@@ -114,60 +116,15 @@ public class Controller {
             PageReadStore pages;
 
             while ((pages = parquetFileReader.readNextRowGroup()) != null) {
-                long rows = 9000000;//pages.getRowCount();
+                long rows = 300000;//pages.getRowCount();
                 RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
-                final SpinLock lock = new SpinLock();
-
-                executorService.submit( () -> {
-                    List<List<Object>> listOfList = new LinkedList<>();
-                    for(long row=0; row<rows/3; row++) {
-                        lock.lock();
-                        SimpleGroup simpleGroup;
-                        try {
-                            simpleGroup = (SimpleGroup) recordReader.read();
-                        } finally {
-                            lock.unlock();
-                        }
-                        listOfList.add(Utils.extractListFromGroup(simpleGroup, table.getColumns()));
-                        if (listOfList.size() == 300000) {
-                            System.out.println("Forward "+listOfList.size()+" rows to machin1");
-                            Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
-                            listOfList = new LinkedList<>();
-                        }
-                    }
-                });
-                executorService.submit( () -> {
-                    List<List<Object>> listOfList = new LinkedList<>();
-                    for(long row=rows/3; row<2*(rows/3);) {
-                        lock.lock();
-                        SimpleGroup simpleGroup;
-                        try {
-                            simpleGroup = (SimpleGroup) recordReader.read();
-                        } finally {
-                            lock.unlock();
-                        }
-                        listOfList.add(Utils.extractListFromGroup(simpleGroup, table.getColumns()));
-                        if (listOfList.size() == 300000) {
-                            System.out.println("Forward "+listOfList.size()+" rows to machin2");
-                            Forwarder.forwardRowsToTable(addressIp2,tableName,listOfList);
-                            listOfList = new LinkedList<>();
-                        }
-                    }
-                });
-                List<List<Object>> listOfList = new LinkedList<>();
-                for(long row=2*(rows/3); row<rows;) {
-                    lock.lock();
-                    SimpleGroup simpleGroup;
-                    try {
-                        simpleGroup = (SimpleGroup) recordReader.read();
-                    } finally {
-                        lock.unlock();
-                    }
-                    listOfList.add(Utils.extractListFromGroup(simpleGroup, table.getColumns()));
-                    if (listOfList.size() == 300000) {
-                        table.addAllRows(listOfList);
-                        listOfList = new LinkedList<>();
-                    }
+                for (long i=0; i<2*(rows/3); i++) {
+                    recordReader.read();
+                }
+                ExecutorService executorService = Executors.newFixedThreadPool(3);
+                for(long row=2*(rows/3); row<rows; row++) {
+                    SimpleGroup simpleGroup = (SimpleGroup) recordReader.read();
+                    executorService.submit( ()-> table.addRowFromSimpleGroup(simpleGroup));
                 }
             }
         } catch (Exception e) {

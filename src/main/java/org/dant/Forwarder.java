@@ -5,6 +5,7 @@ import com.google.gson.reflect.TypeToken;
 import org.dant.model.Column;
 import org.dant.model.SelectMethod;
 
+import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -41,6 +42,23 @@ public class Forwarder {
                 .uri(URI.create(url))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                .build();
+        try {
+            httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding());
+        } catch (Exception e) {
+            System.out.println("Erreur in forwarding row to other slave node");
+        }
+        System.out.println("Parquet envoyé !");
+    }
+
+    public static void forwardParquet(String ipAddress, String name, InputStream inputStream, int pos) {
+        String url = new StringBuilder().append("http://").append(ipAddress).append(":").append(8080).append("/slave/parseParquet/").append(name).toString();
+        HttpClient httpClient = HttpClient.newHttpClient();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Content-Type", "application/json")
+                .header("position",String.valueOf(pos))
+                .POST(HttpRequest.BodyPublishers.ofInputStream(() -> inputStream))
                 .build();
         try {
             httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding());
