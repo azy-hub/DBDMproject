@@ -114,52 +114,13 @@ public class Controller {
             PageReadStore pages;
 
             while ((pages = parquetFileReader.readNextRowGroup()) != null) {
-                long rows = pages.getRowCount();
+                long rows = 9000000;//pages.getRowCount();
                 RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
                 final SpinLock lock = new SpinLock();
 
                 executorService.submit( () -> {
-                    for(long row=0; row<rows/3;) {
-                        List<List<Object>> listOfList = new LinkedList<>();
-                        long i = 0;
-                        while (i<500000 && row < rows/3) {
-                            lock.lock();
-                            SimpleGroup simpleGroup;
-                            try {
-                                simpleGroup = (SimpleGroup) recordReader.read();
-                            } finally {
-                                lock.unlock();
-                            }
-                            listOfList.add(Utils.extractListFromGroup(simpleGroup, table.getColumns()));
-                            i++;
-                            row++;
-                        }
-                        Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
-                    }
-                });
-                executorService.submit( () -> {
-                    for(long row=rows/3; row<2*(rows/3);) {
-                        List<List<Object>> listOfList = new LinkedList<>();
-                        long i = 0;
-                        while (i<500000 && row<2*(rows/3)) {
-                            lock.lock();
-                            SimpleGroup simpleGroup;
-                            try {
-                                simpleGroup = (SimpleGroup) recordReader.read();
-                            } finally {
-                                lock.unlock();
-                            }
-                            listOfList.add(Utils.extractListFromGroup(simpleGroup, table.getColumns()));
-                            i++;
-                            row++;
-                        }
-                        Forwarder.forwardRowsToTable(addressIp2,tableName,listOfList);
-                    }
-                });
-                for(long row=2*(rows/3); row<rows;) {
                     List<List<Object>> listOfList = new LinkedList<>();
-                    long i = 0;
-                    while (i<500000 && row<rows) {
+                    for(long row=0; row<rows/3; row++) {
                         lock.lock();
                         SimpleGroup simpleGroup;
                         try {
@@ -168,10 +129,45 @@ public class Controller {
                             lock.unlock();
                         }
                         listOfList.add(Utils.extractListFromGroup(simpleGroup, table.getColumns()));
-                        i++;
-                        row++;
+                        if (listOfList.size() == 300000) {
+                            System.out.println("Forward "+listOfList.size()+" rows to machin1");
+                            Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
+                            listOfList = new LinkedList<>();
+                        }
                     }
-                    executorService.submit( () -> table.addAllRows(listOfList));
+                });
+                executorService.submit( () -> {
+                    List<List<Object>> listOfList = new LinkedList<>();
+                    for(long row=rows/3; row<2*(rows/3);) {
+                        lock.lock();
+                        SimpleGroup simpleGroup;
+                        try {
+                            simpleGroup = (SimpleGroup) recordReader.read();
+                        } finally {
+                            lock.unlock();
+                        }
+                        listOfList.add(Utils.extractListFromGroup(simpleGroup, table.getColumns()));
+                        if (listOfList.size() == 300000) {
+                            System.out.println("Forward "+listOfList.size()+" rows to machin2");
+                            Forwarder.forwardRowsToTable(addressIp2,tableName,listOfList);
+                            listOfList = new LinkedList<>();
+                        }
+                    }
+                });
+                List<List<Object>> listOfList = new LinkedList<>();
+                for(long row=2*(rows/3); row<rows;) {
+                    lock.lock();
+                    SimpleGroup simpleGroup;
+                    try {
+                        simpleGroup = (SimpleGroup) recordReader.read();
+                    } finally {
+                        lock.unlock();
+                    }
+                    listOfList.add(Utils.extractListFromGroup(simpleGroup, table.getColumns()));
+                    if (listOfList.size() == 300000) {
+                        table.addAllRows(listOfList);
+                        listOfList = new LinkedList<>();
+                    }
                 }
             }
         } catch (Exception e) {
