@@ -50,8 +50,8 @@ public class Controller {
 
     private final ExecutorService executorService = Executors.newCachedThreadPool();
 
-    private String addressIp1 = "172.20.10.2";
-    private String addressIp2 = "";
+    public static final String addressIp1 = "172.20.10.2";
+    public static final String addressIp2 = "172.20.10.4";
 
     @POST
     @Path("/parquet/createTable/{tableName}")
@@ -114,13 +114,12 @@ public class Controller {
             MessageType schema = footer.getFileMetaData().getSchema();
             PageReadStore pages;
 
-            ExecutorService executorService = Executors.newFixedThreadPool(3);
             while ((pages = parquetFileReader.readNextRowGroup()) != null) {
                 long rows = pages.getRowCount();
                 RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
                 final SpinLock lock = new SpinLock();
 
-                /*executorService.submit( () -> {
+                executorService.submit( () -> {
                     List<List<Object>> listOfList = new LinkedList<>();
                     for(int row=0; row<500; row++) {
                         lock.lock();
@@ -133,7 +132,21 @@ public class Controller {
                         listOfList.add(Utils.extractListFromGroup(simpleGroup,table.getColumns()));
                     }
                     Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
-                });*/
+                });
+                executorService.submit( () -> {
+                    List<List<Object>> listOfList = new LinkedList<>();
+                    for(int row=0; row<500; row++) {
+                        lock.lock();
+                        SimpleGroup simpleGroup;
+                        try {
+                            simpleGroup = (SimpleGroup) recordReader.read();
+                        } finally {
+                            lock.unlock();
+                        }
+                        listOfList.add(Utils.extractListFromGroup(simpleGroup,table.getColumns()));
+                    }
+                    Forwarder.forwardRowsToTable(addressIp2,tableName,listOfList);
+                });
                 List<List<Object>> listOfList = new LinkedList<>();
                 for(int row=0; row<500; row++) {
                     lock.lock();
@@ -147,7 +160,6 @@ public class Controller {
                 }
                 table.addAllRows(listOfList);
             }
-            executorService.shutdown();
             try {
                 if (!executorService.awaitTermination(30, TimeUnit.MINUTES)) {
                     System.out.println("30 Minutes écoulées, remplissage de la base de données pas fini.");
@@ -194,8 +206,8 @@ public class Controller {
             return "Columns are empty";
         else
             new Table(tableName, listColumns);
-        //Forwarder.forwardCreateTable(addressIp1,tableName,listColumns);
-        //Forwarder.forwardCreateTable(addressIp2,tableName,listColumns);
+        Forwarder.forwardCreateTable(addressIp1,tableName,listColumns);
+        Forwarder.forwardCreateTable(addressIp2,tableName,listColumns);
         return "Table created successfully";
     }
 
@@ -209,13 +221,12 @@ public class Controller {
         if (table == null)
             throw new NotFoundException("La table avec le nom " + selectMethod.getFROM() + " n'a pas été trouvée.");
 
-        if (!table.checkConditions(selectMethod.getWHERE())) {
+        if (!table.checkConditions(selectMethod.getWHERE()))
             throw new NotFoundException("No condition found");
-        }
 
-        if (table.getColumnsByNames(selectMethod.getSELECT()).isEmpty()) {
+
+        if (table.getColumnsByNames(selectMethod.getSELECT()).isEmpty())
             throw new NotFoundException("No columns matching with any of this names " + selectMethod.getSELECT());
-        }
 
         Future<List<List<Object>>> future1 = executorService.submit(new Callable<List<List<Object>>>() {
             @Override
@@ -223,14 +234,20 @@ public class Controller {
                 return Forwarder.forwardGetTableContent(addressIp1,selectMethod);
             }
         });
-        //Future<List<List<Object>>> future2 = executorService.submit( () -> Forwarder.forwardGetTableContent(addressIp2,selectMethod));
+        Future<List<List<Object>>> future2 = executorService.submit(new Callable<List<List<Object>>>() {
+            @Override
+            public List<List<Object>> call() throws Exception {
+                return Forwarder.forwardGetTableContent(addressIp2,selectMethod);
+            }
+        });
+
         List<List<Object>> res = table.select(selectMethod);
-        /*try {
+        try {
             res.addAll(future1.get());
-            //res.addAll(future2.get());
+            res.addAll(future2.get());
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
-        }*/
+        }
         System.out.println(res.size());
         return res;
     }
@@ -256,13 +273,11 @@ public class Controller {
         Table table = DataBase.get().get(tableName);
         if(table == null)
             throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
-        //if( !listArgs.stream().allMatch( list -> list.size() == table.getColumns().size() ) )
-            //throw new NotFoundException("Nombre d'arguments invalide dans l'une des lignes.");
-        //Forwarder.forwardRowsToTable(addressIp1,tableName,listArgs.subList(0, listArgs.size()/2));
-        // Forwarder.forwardRowToTable("",tableName,listArgs.subList(listArgs.size()/3, 2*listArgs.size()/3));
-        // table.addAllRows(listArgs.subList(2*listArgs.size()/3, listArgs.size() ));
-        // table.addAllRows(listArgs.subList(listArgs.size()/2, listArgs.size()));
-        table.addAllRows(listArgs.parallelStream().map( list -> table.castRow(list)).collect(Collectors.toList()));
+        if( !listArgs.stream().allMatch( list -> list.size() == table.getColumns().size() ) )
+            throw new NotFoundException("Nombre d'arguments invalide dans l'une des lignes.");
+        Forwarder.forwardRowsToTable(addressIp1,tableName,listArgs.subList(0, listArgs.size()/3));
+        Forwarder.forwardRowsToTable(addressIp2,tableName,listArgs.subList(listArgs.size()/3, 2*listArgs.size()/3));
+        table.addAllRows(listArgs.subList(2*listArgs.size()/3, listArgs.size()).parallelStream().map( list -> table.castRow(list)).collect(Collectors.toList()));
         return "Rows added successfully !";
     }
 }

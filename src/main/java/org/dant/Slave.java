@@ -60,7 +60,7 @@ public class Slave {
         if( !listArgs.stream().allMatch( list -> list.size() == table.getColumns().size() ) )
             throw new NotFoundException("Nombre d'arguments invalide dans l'une des lignes.");
 
-        table.addAllRows(listArgs);
+        table.addAllRows(listArgs.parallelStream().map( list -> table.castRow(list)).collect(Collectors.toList()));
         System.out.println(listArgs.size()+" rows added !");
     }
 
