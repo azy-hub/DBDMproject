@@ -2,9 +2,14 @@ package org.dant;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.InputStreamEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
 import org.dant.model.Column;
 import org.dant.model.SelectMethod;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Type;
 import java.net.URI;
@@ -51,20 +56,24 @@ public class Forwarder {
         System.out.println("Parquet envoyé !");
     }
 
-    public static void forwardParquet(String ipAddress, String name, InputStream inputStream, int pos) {
-        String url = new StringBuilder().append("http://").append(ipAddress).append(":").append(8080).append("/slave/parseParquet/").append(name).toString();
+    public static void forwardParquet(String ipAddress, String name, InputStream inputStream, int pos) throws IOException {
+        String url = new StringBuilder().append("http://").append(ipAddress).append(":").append(8080).append("/slave/parquet/fillTable/").append(name).append("/").append(pos).toString();
         HttpClient httpClient = HttpClient.newHttpClient();
+        Gson gson = new Gson();
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
-                .header("Content-Type", "application/json")
-                .header("position",String.valueOf(pos))
-                .POST(HttpRequest.BodyPublishers.ofInputStream(() -> inputStream))
+                .header("Content-Type", "application/octet-stream")
+                .POST(HttpRequest.BodyPublishers.ofInputStream( () -> inputStream ))
                 .build();
         try {
             httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding());
         } catch (Exception e) {
             System.out.println("Erreur in forwarding row to other slave node");
         }
+
+        // Traiter la réponse...
+
+        // Fermer le client HttpClient
     }
 
     public static void forwardCreateTable(String ipAddress, String name, List<Column> columns) {

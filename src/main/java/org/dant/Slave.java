@@ -84,10 +84,9 @@ public class Slave {
     }
 
     @POST
-    @Path("/parquet/fillTable/{tableName}")
+    @Path("/parquet/fillTable/{tableName}/{position}")
     @Consumes(MediaType.APPLICATION_OCTET_STREAM)
-    public void readParquet(@RestPath String tableName, InputStream inputStream, @HeaderParam("positon") int position) throws IOException {
-        System.out.println("position : "+position);
+    public void readParquet(@RestPath String tableName, InputStream inputStream, @RestPath int position) throws IOException {
         Configuration conf = new Configuration();
         Table table = DataBase.get().get(tableName);
         if (table == null)
@@ -96,9 +95,11 @@ public class Slave {
         org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path("temp.parquet");
         try {
             fs = FileSystem.get(conf);
+            System.out.println("Creation fichier parquet");
             try (FSDataOutputStream outputStream = fs.create(path)) {
                 IOUtils.copy(inputStream, outputStream);
             }
+            System.out.println("fin création");
         } catch (IOException e) {
             System.out.println("Erreur en recopiant le fichier parquet lu");
         };

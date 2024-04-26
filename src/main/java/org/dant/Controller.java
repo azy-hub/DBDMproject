@@ -28,6 +28,7 @@ import org.jboss.resteasy.reactive.RestPath;
 
 
 import java.io.IOException;
+import java.io.ByteArrayInputStream;
 
 import java.io.InputStream;
 import java.io.Reader;
@@ -94,8 +95,14 @@ public class Controller {
     @Path("/parquet/fillTable/{tableName}")
     @Consumes(MediaType.APPLICATION_OCTET_STREAM)
     public void readParquet(@RestPath String tableName, InputStream inputStream) throws IOException {
-        executorService.submit( () -> Forwarder.forwardParquet(addressIp1,tableName,inputStream,0) );
-        executorService.submit( () -> Forwarder.forwardParquet(addressIp2,tableName,inputStream,1) );
+        byte[] data = inputStream.readAllBytes();
+            try {
+                Forwarder.forwardParquet(addressIp1,tableName,new ByteArrayInputStream(data),0);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+
+        //executorService.submit( () -> Forwarder.forwardParquet(addressIp2,tableName,inputStream,1) );
         Configuration conf = new Configuration();
         Table table = DataBase.get().get(tableName);
         if (table == null)
@@ -104,9 +111,11 @@ public class Controller {
         org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path("temp.parquet");
         try {
             fs = FileSystem.get(conf);
+            System.out.println("deb copie");
             try (FSDataOutputStream outputStream = fs.create(path)) {
-                IOUtils.copy(inputStream, outputStream);
+                IOUtils.copy(new ByteArrayInputStream(data), outputStream);
             }
+            System.out.println("end copie");
         } catch (IOException e) {
             System.out.println("Erreur en recopiant le fichier parquet lu");
         };
@@ -116,6 +125,7 @@ public class Controller {
             PageReadStore pages;
 
             while ((pages = parquetFileReader.readNextRowGroup()) != null) {
+                System.out.println("try");
                 long rows = 300000;//pages.getRowCount();
                 RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
                 for (long i=0; i<2*(rows/3); i++) {
@@ -168,7 +178,7 @@ public class Controller {
         else
             new Table(tableName, listColumns);
         Forwarder.forwardCreateTable(addressIp1,tableName,listColumns);
-        Forwarder.forwardCreateTable(addressIp2,tableName,listColumns);
+        //Forwarder.forwardCreateTable(addressIp2,tableName,listColumns);
         return "Table created successfully";
     }
 
@@ -195,17 +205,17 @@ public class Controller {
                 return Forwarder.forwardGetTableContent(addressIp1,selectMethod);
             }
         });
-        Future<List<List<Object>>> future2 = executorService.submit(new Callable<List<List<Object>>>() {
+        /*Future<List<List<Object>>> future2 = executorService.submit(new Callable<List<List<Object>>>() {
             @Override
             public List<List<Object>> call() throws Exception {
                 return Forwarder.forwardGetTableContent(addressIp2,selectMethod);
             }
-        });
+        });*/
 
         List<List<Object>> res = table.select(selectMethod);
         try {
             res.addAll(future1.get());
-            res.addAll(future2.get());
+            //res.addAll(future2.get());
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }
