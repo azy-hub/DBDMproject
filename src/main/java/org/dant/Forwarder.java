@@ -57,9 +57,8 @@ public class Forwarder {
     }
 
     public static void forwardParquet(String ipAddress, String name, InputStream inputStream, int pos) throws IOException {
-        String url = new StringBuilder().append("http://").append(ipAddress).append(":").append(8080).append("/slave/parquet/fillTable/").append(name).append("/").append(pos).toString();
+        String url = new StringBuilder().append("http://").append(ipAddress).append(":").append(8080).append("/v1/parquet/fillTable/").append(name).append("/").append(pos).toString();
         HttpClient httpClient = HttpClient.newHttpClient();
-        Gson gson = new Gson();
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Content-Type", "application/octet-stream")

@@ -101,7 +101,6 @@ public class Controller {
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-
         //executorService.submit( () -> Forwarder.forwardParquet(addressIp2,tableName,inputStream,1) );
         Configuration conf = new Configuration();
         Table table = DataBase.get().get(tableName);
@@ -111,11 +110,11 @@ public class Controller {
         org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path("temp.parquet");
         try {
             fs = FileSystem.get(conf);
-            System.out.println("deb copie");
+            System.out.println("deb copiee");
             try (FSDataOutputStream outputStream = fs.create(path)) {
                 IOUtils.copy(new ByteArrayInputStream(data), outputStream);
             }
-            System.out.println("end copie");
+            System.out.println("end copiee");
         } catch (IOException e) {
             System.out.println("Erreur en recopiant le fichier parquet lu");
         };
