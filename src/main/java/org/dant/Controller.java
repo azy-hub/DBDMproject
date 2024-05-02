@@ -48,7 +48,6 @@ import java.util.stream.Collectors;
 @Path("/v1")
 public class Controller {
 
-    private final ExecutorService executorService = Executors.newCachedThreadPool();
     public static final String addressIp1 = "192.168.6.21";
     public static final String addressIp2 = "192.168.6.117";
 
@@ -114,9 +113,11 @@ public class Controller {
             PageReadStore pages;
 
             while ((pages = parquetFileReader.readNextRowGroup()) != null) {
-                long rows = 9000000;//pages.getRowCount();
+                long rows = 2000000;//pages.getRowCount();
                 RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
                 final SpinLock lock = new SpinLock();
+
+                ExecutorService executorService = Executors.newFixedThreadPool(2);
 
                 executorService.submit( () -> {
                     List<List<Object>> listOfList = new LinkedList<>();
@@ -135,10 +136,12 @@ public class Controller {
                             listOfList = new LinkedList<>();
                         }
                     }
+                    System.out.println("Forward "+listOfList.size()+" rows to machin1");
+                    Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
                 });
                 executorService.submit( () -> {
                     List<List<Object>> listOfList = new LinkedList<>();
-                    for(long row=rows/3; row<2*(rows/3);) {
+                    for(long row=rows/3; row<(2*(rows/3));row++) {
                         lock.lock();
                         SimpleGroup simpleGroup;
                         try {
@@ -153,9 +156,11 @@ public class Controller {
                             listOfList = new LinkedList<>();
                         }
                     }
+                    System.out.println("Forward "+listOfList.size()+" rows to machin2");
+                    Forwarder.forwardRowsToTable(addressIp2,tableName,listOfList);
                 });
                 List<List<Object>> listOfList = new LinkedList<>();
-                for(long row=2*(rows/3); row<rows;) {
+                for(long row=2*(rows/3); row<rows;row++) {
                     lock.lock();
                     SimpleGroup simpleGroup;
                     try {
@@ -169,6 +174,8 @@ public class Controller {
                         listOfList = new LinkedList<>();
                     }
                 }
+                table.addAllRows(listOfList);
+                executorService.shutdown();
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -231,7 +238,7 @@ public class Controller {
 
         if (table.getColumnsByNames(selectMethod.getSELECT()).isEmpty())
             throw new NotFoundException("No columns matching with any of this names " + selectMethod.getSELECT());
-
+        ExecutorService executorService = Executors.newFixedThreadPool(2);
         Future<List<List<Object>>> future1 = executorService.submit(new Callable<List<List<Object>>>() {
             @Override
             public List<List<Object>> call() throws Exception {
@@ -252,6 +259,7 @@ public class Controller {
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }
+        executorService.shutdown();
         System.out.println(res.size());
         return res;
     }
@@ -279,9 +287,11 @@ public class Controller {
             throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
         if( !listArgs.stream().allMatch( list -> list.size() == table.getColumns().size() ) )
             throw new NotFoundException("Nombre d'arguments invalide dans l'une des lignes.");
+        ExecutorService executorService = Executors.newFixedThreadPool(2);
         executorService.submit( ()-> Forwarder.forwardRowsToTable(addressIp1,tableName,listArgs.subList(0, listArgs.size()/3)) );
         executorService.submit( ()-> Forwarder.forwardRowsToTable(addressIp2,tableName,listArgs.subList(listArgs.size()/3, 2*listArgs.size()/3)) );
         table.addAllRows(listArgs.subList(2*listArgs.size()/3, listArgs.size()).parallelStream().map( list -> table.castRow(list)).collect(Collectors.toList()));
+        executorService.shutdown();
         return "Rows added successfully !";
     }
 }
