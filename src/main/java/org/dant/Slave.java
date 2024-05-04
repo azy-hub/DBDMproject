@@ -54,12 +54,8 @@ public class Slave {
     @Consumes(MediaType.APPLICATION_JSON)
     public void insertRows(@RestPath String tableName, List<List<Object>> listArgs) {
         Table table = DataBase.get().get(tableName);
-
         if(table == null)
             throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
-        if( !listArgs.stream().allMatch( list -> list.size() == table.getColumns().size() ) )
-            throw new NotFoundException("Nombre d'arguments invalide dans l'une des lignes.");
-
         table.addAllRows(listArgs.stream().map( list -> table.castRow(list)).collect(Collectors.toList()));
         System.out.println(listArgs.size()+" rows added !");
     }

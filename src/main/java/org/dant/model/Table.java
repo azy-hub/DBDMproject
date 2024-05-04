@@ -36,18 +36,16 @@ public class Table {
 
     public Table(String name, List<Column> columns) {
         this.name = name;
-        this.columns = columns;
+        this.columns = new ArrayList<>();
+        for(Column column : columns) {
+            this.columns.add( new Column(column.getName(), column.getType()) );
+        }
         rows = new LinkedList<>();
         DataBase.get().put(name,this);
     }
 
     public void addRow(List<Object> row) {
-        lockAdd.lock();
-        try {
-            rows.add(row);
-        } finally {
-            lockAdd.unlock();
-        }
+        rows.add(row);
     }
 
     public void addAllRows(List<List<Object>> rows) {
@@ -211,32 +209,32 @@ public class Table {
     public List<Object> castRow(List<Object> args) {
         List<Object> list = new ArrayList<>(columns.size());
         for(int i=0; i<columns.size(); i++) {
-            try {
+            if (args.get(i) == null)
+                list.add(null);
+            else {
                 switch (columns.get(i).getType()) {
                     case TypeDB.DOUBLE:
-                        list.add( ((BigDecimal)args.get(i)).doubleValue() );
+                        list.add(((BigDecimal) args.get(i)).doubleValue());
                         break;
                     case TypeDB.STRING:
-                        list.add( args.get(i) );
+                        list.add(args.get(i));
                         break;
                     case TypeDB.LONG:
-                        list.add( ((BigDecimal)args.get(i)).longValue() );
+                        list.add(((BigDecimal) args.get(i)).longValue());
                         break;
                     case TypeDB.INT:
-                        list.add( ((BigDecimal)args.get(i)).intValue() );
+                        list.add(((BigDecimal) args.get(i)).intValue());
                         break;
                     case TypeDB.SHORT:
-                        list.add( ((BigDecimal)args.get(i)).shortValue() );
+                        list.add(((BigDecimal) args.get(i)).shortValue());
                         break;
                     case TypeDB.BYTE:
-                        list.add( ((BigDecimal)args.get(i)).byteValue() );
+                        list.add(((BigDecimal) args.get(i)).byteValue());
                         break;
                     default:
                         list.add(null);
                         break;
                 }
-            } catch (RuntimeException e) {
-                list.add(null);
             }
         }
         return list;

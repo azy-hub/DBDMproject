@@ -26,7 +26,7 @@ public class Forwarder {
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
         try {
-            CompletableFuture<HttpResponse<Void>> response = httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding());
+            HttpResponse<Void> response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
         } catch (Exception e) {
             System.out.println("Erreur in forwarding row to other slave node");
         }
