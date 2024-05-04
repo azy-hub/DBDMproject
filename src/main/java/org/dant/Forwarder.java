@@ -5,20 +5,44 @@ import com.google.gson.reflect.TypeToken;
 import org.dant.model.Column;
 import org.dant.model.SelectMethod;
 
+import java.io.File;
+import java.io.FileNotFoundException;
 import java.lang.reflect.Type;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 public class Forwarder {
 
+    static HttpClient httpClient = HttpClient.newHttpClient();
+
+    static Gson gson = new Gson();
+
+
+    public static String forwardFileToTable(String ipAddress, String name, File file, int pos) throws FileNotFoundException {
+        String url = "http://" + ipAddress + ":" + 8080 + "/slave/parse/" + name + "/" + pos;
+
+        HttpRequest.BodyPublisher body = HttpRequest.BodyPublishers.ofFile(file.toPath());
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Content-Type", "multipart/form-data")
+                .POST(body)
+                .build();
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            System.out.println("Liza : " + response.body());
+            return response.body();
+        } catch (Exception e) {
+            System.out.println("Erreur in forwarding row to other slave node");
+        }
+        return "failed";
+    }
+
     public static void forwardRowsToTable(String ipAddress, String name, List<List<Object>> rows) {
         String url = "http://" + ipAddress + ":" + 8080 + "/slave/insertRows/" + name;
-        HttpClient httpClient = HttpClient.newHttpClient();
-        Gson gson = new Gson();
         String jsonBody = gson.toJson(rows);
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -26,7 +50,8 @@ public class Forwarder {
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
         try {
-            HttpResponse<Void> response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
+            System.out.println("Sending Request to Liza");
+            httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding());
         } catch (Exception e) {
             System.out.println("Erreur in forwarding row to other slave node");
         }
@@ -34,8 +59,6 @@ public class Forwarder {
 
     public static void forwardRowToTable(String ipAddress, String name, List<Object> row) {
         String url = new StringBuilder().append("http://").append(ipAddress).append(":").append(8080).append("/slave/insertOneRow/").append(name).toString();
-        HttpClient httpClient = HttpClient.newHttpClient();
-        Gson gson = new Gson();
         String jsonBody = gson.toJson(row);
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
@@ -51,9 +74,7 @@ public class Forwarder {
 
     public static void forwardCreateTable(String ipAddress, String name, List<Column> columns) {
         String url = new StringBuilder().append("http://").append(ipAddress).append(":").append(8080).append("/slave/createTable/").append(name).toString();
-        Gson gson = new Gson();
         String jsonBody = gson.toJson(columns);
-        HttpClient httpClient = HttpClient.newHttpClient();
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Content-Type", "application/json")
@@ -69,9 +90,7 @@ public class Forwarder {
 
     public static List<List<Object>> forwardGetTableContent(String ipAddress, SelectMethod selectMethod) {
         String url = "http://" + ipAddress + ":" + 8080 + "/slave/select";
-        Gson gson = new Gson();
         String jsonBody = gson.toJson(selectMethod);
-        HttpClient httpClient = HttpClient.newHttpClient();
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Content-Type", "application/json")

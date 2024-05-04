@@ -3,11 +3,26 @@ package org.dant;
 import jakarta.annotation.Nullable;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.parquet.ParquetReadOptions;
+import org.apache.parquet.column.page.PageReadStore;
+import org.apache.parquet.example.data.Group;
+import org.apache.parquet.example.data.simple.convert.GroupRecordConverter;
+import org.apache.parquet.hadoop.ParquetFileReader;
+import org.apache.parquet.hadoop.metadata.ParquetMetadata;
+import org.apache.parquet.hadoop.util.HadoopInputFile;
+import org.apache.parquet.io.ColumnIOFactory;
+import org.apache.parquet.io.RecordReader;
+import org.apache.parquet.schema.MessageType;
 import org.dant.model.*;
 import org.jboss.resteasy.reactive.RestPath;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 @Path("/slave")
@@ -58,6 +73,37 @@ public class Slave {
             throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
         table.addAllRows(listArgs.stream().map( list -> table.castRow(list)).collect(Collectors.toList()));
         System.out.println(listArgs.size()+" rows added !");
+    }
+
+    @POST
+    @Path("/parquet/{tableName}/{pos}")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    public void readParquet(@RestPath String tableName,@RestPath int pos, File file) {
+        Configuration conf = new Configuration();
+        Table table = DataBase.get().get(tableName);
+        if (table == null)
+            return;
+        org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path(file.getAbsolutePath());
+        try (ParquetFileReader parquetFileReader = new ParquetFileReader(HadoopInputFile.fromPath(path, new Configuration()), ParquetReadOptions.builder().build())) {
+            ParquetMetadata footer = parquetFileReader.getFooter();
+            MessageType schema = footer.getFileMetaData().getSchema();
+            PageReadStore pages;
+
+            while ((pages = parquetFileReader.readNextRowGroup()) != null) {
+                long rows = 3000000;//pages.getRowCount();
+                RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
+                for(long row=pos*(rows/3); row<(pos+1)*(rows/3); row++){
+                    recordReader.read();
+                }
+                for(long row=0; row<rows/3;row++) {
+                    Group group = recordReader.read();
+                    table.addRow(Utils.extractListFromGroup(group, table.getColumns()));
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        System.out.println("FINI !");
     }
 
 }
