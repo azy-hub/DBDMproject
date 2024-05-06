@@ -1,4 +1,6 @@
-package org.dant.model;
+package org.dant.select;
+
+import org.dant.model.TypeDB;
 
 import java.math.BigDecimal;
 import java.util.List;

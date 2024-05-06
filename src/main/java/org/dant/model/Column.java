@@ -5,6 +5,7 @@ import org.apache.parquet.example.data.simple.SimpleGroup;
 import org.jboss.logging.annotations.Once;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 
@@ -13,6 +14,9 @@ public class Column {
     private String name;
     private String type;
     public Function<Group,Object> extractFromGroup;
+    private boolean isIndex;
+    private Map<Object,List<Integer>> index;
+
 
 
     public Column(){
@@ -21,6 +25,7 @@ public class Column {
     public Column(String name, String type) {
         this.name = name;
         this.type = type;
+        this.isIndex = false;
         switch (this.type) {
             case TypeDB.DOUBLE:
                 this.extractFromGroup = group -> {
@@ -78,4 +83,19 @@ public class Column {
         this.type = type;
     }
 
+    public boolean isIndex() {
+        return isIndex;
+    }
+
+    public void setIsIndex(boolean index) {
+        isIndex = index;
+    }
+
+    public Map<Object, List<Integer>> getIndex() {
+        return index;
+    }
+
+    public void setIndex(Map<Object, List<Integer>> index) {
+        this.index = index;
+    }
 }

@@ -1,6 +1,5 @@
 package org.dant;
 
-import jakarta.annotation.Nullable;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import org.apache.hadoop.conf.Configuration;
@@ -15,14 +14,11 @@ import org.apache.parquet.io.ColumnIOFactory;
 import org.apache.parquet.io.RecordReader;
 import org.apache.parquet.schema.MessageType;
 import org.dant.model.*;
+import org.dant.select.SelectMethod;
 import org.jboss.resteasy.reactive.RestPath;
 
 import java.io.File;
-import java.io.IOException;
-import java.util.LinkedList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 @Path("/slave")

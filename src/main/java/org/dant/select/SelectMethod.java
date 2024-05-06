@@ -1,4 +1,4 @@
-package org.dant.model;
+package org.dant.select;
 
 import java.util.List;
 
@@ -7,14 +7,18 @@ public class SelectMethod {
     private List<String> SELECT;
     private String FROM;
     private List<Condition> WHERE;
+    private String GROUPBY;
+    private Aggregat AGGREGAT;
 
     public SelectMethod() {
     }
 
-    public SelectMethod(List<String> SELECT, String FROM, List<Condition> WHERE) {
+    public SelectMethod(List<String> SELECT, String FROM, List<Condition> WHERE, String GROUPBY, Aggregat AGGREGAT) {
         this.SELECT = SELECT;
         this.FROM = FROM;
         this.WHERE = WHERE;
+        this.GROUPBY = GROUPBY;
+        this.AGGREGAT = AGGREGAT;
     }
 
     public List<String> getSELECT() {
@@ -39,5 +43,21 @@ public class SelectMethod {
 
     public void setWHERE(List<Condition> WHERE) {
         this.WHERE = WHERE;
+    }
+
+    public String getGROUPBY() {
+        return GROUPBY;
+    }
+
+    public void setGROUPBY(String GROUPBY) {
+        this.GROUPBY = GROUPBY;
+    }
+
+    public Aggregat getAGGREGAT() {
+        return AGGREGAT;
+    }
+
+    public void setAGGREGAT(Aggregat AGGREGAT) {
+        this.AGGREGAT = AGGREGAT;
     }
 }

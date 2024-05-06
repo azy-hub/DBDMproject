@@ -2,8 +2,9 @@ package org.dant;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
+import jakarta.ws.rs.core.MediaType;
 import org.dant.model.Column;
-import org.dant.model.SelectMethod;
+import org.dant.select.SelectMethod;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -25,13 +26,14 @@ public class Forwarder {
         String url = "http://" + ipAddress + ":" + 8080 + "/slave/parse/" + name + "/" + pos;
 
         HttpRequest.BodyPublisher body = HttpRequest.BodyPublishers.ofFile(file.toPath());
-
+        System.out.println(body.contentLength());
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
-                .header("Content-Type", "multipart/form-data")
+                .header("Content-Type", MediaType.APPLICATION_OCTET_STREAM)
                 .POST(body)
                 .build();
         try {
+            System.out.println("sending request");
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             System.out.println("Liza : " + response.body());
             return response.body();
@@ -52,6 +54,7 @@ public class Forwarder {
         try {
             System.out.println("Sending Request to Liza");
             httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding());
+            System.out.println("request sent !");
         } catch (Exception e) {
             System.out.println("Erreur in forwarding row to other slave node");
         }
