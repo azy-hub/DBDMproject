@@ -1,8 +1,5 @@
 package org.dant;
 
-import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
-import jakarta.annotation.Nullable;
 import jakarta.ws.rs.*;
 
 import jakarta.ws.rs.core.MediaType;
@@ -12,7 +9,6 @@ import org.apache.parquet.ParquetReadOptions;
 import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.column.page.PageReadStore;
 import org.apache.parquet.example.data.Group;
-import org.apache.parquet.example.data.simple.SimpleGroup;
 import org.apache.parquet.example.data.simple.convert.GroupRecordConverter;
 import org.apache.parquet.hadoop.ParquetFileReader;
 import org.apache.parquet.hadoop.metadata.ParquetMetadata;
@@ -23,27 +19,16 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.parquet.schema.MessageType;
 import org.dant.model.*;
+import org.dant.select.SelectMethod;
 import org.jboss.resteasy.reactive.RestPath;
 
 
-
+import java.io.File;
 import java.io.IOException;
 
 import java.io.InputStream;
-import java.io.Reader;
-import java.lang.reflect.Type;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
-
 
 @Path("/v1")
 public class Controller {
@@ -92,100 +77,89 @@ public class Controller {
     @POST
     @Path("/parquet/fillTable/{tableName}")
     @Consumes(MediaType.APPLICATION_OCTET_STREAM)
-    public void readParquet(@RestPath String tableName, InputStream inputStream) throws IOException {
+    public void readParquet(@RestPath String tableName, File file) throws IOException {
         Configuration conf = new Configuration();
         Table table = DataBase.get().get(tableName);
         if (table == null)
             return;
-        FileSystem fs = null;
-        org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path("temp.parquet");
-        try {
-            fs = FileSystem.get(conf);
-            try (FSDataOutputStream outputStream = fs.create(path)) {
-                IOUtils.copy(inputStream, outputStream);
-            }
-        } catch (IOException e) {
-            System.out.println("Erreur en recopiant le fichier parquet lu");
-        };
+        org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path(file.getAbsolutePath());
         try (ParquetFileReader parquetFileReader = new ParquetFileReader(HadoopInputFile.fromPath(path, new Configuration()), ParquetReadOptions.builder().build())) {
             ParquetMetadata footer = parquetFileReader.getFooter();
             MessageType schema = footer.getFileMetaData().getSchema();
             PageReadStore pages;
 
             while ((pages = parquetFileReader.readNextRowGroup()) != null) {
-                long rows = 2000000;//pages.getRowCount();
+                long rows = 300;//pages.getRowCount();
                 RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
                 final SpinLock lock = new SpinLock();
 
-                ExecutorService executorService = Executors.newFixedThreadPool(2);
+                List<Set<Object>> echantillon = new ArrayList<>(table.getColumns().size());
+                for (Column column : table.getColumns()) {
+                    echantillon.add(new HashSet<>());
+                }
+                int tailleEchantillon = 20000;
+                for(int i=0; i<tailleEchantillon; i++) {
+                    List<Object> list = Utils.extractListFromGroup(recordReader.read(), table.getColumns());
+                    for(int j=0; j<table.getColumns().size(); j++) {
+                        Object obj = list.get(j);
+                        if (obj != null)
+                            echantillon.get(j).add(list.get(j));
+                    }
+                }
+                List<Integer> cardinalite = echantillon.stream().map(Set::size).collect(Collectors.toList());
+                table.createIndexColumn(cardinalite,tailleEchantillon);
 
-                executorService.submit( () -> {
+                //ExecutorService executorService = Executors.newFixedThreadPool(2);
+
+                /*executorService.execute( () -> {
                     List<List<Object>> listOfList = new LinkedList<>();
                     for(long row=0; row<rows/3; row++) {
                         lock.lock();
-                        SimpleGroup simpleGroup;
+                        Group group;
                         try {
-                            simpleGroup = (SimpleGroup) recordReader.read();
+                            group = recordReader.read();
                         } finally {
                             lock.unlock();
                         }
-                        listOfList.add(Utils.extractListFromGroup(simpleGroup, table.getColumns()));
-                        if (listOfList.size() == 300000) {
-                            System.out.println("Forward "+listOfList.size()+" rows to machin1");
+                        listOfList.add(Utils.extractListFromGroup(group, table.getColumns()));
+                    }
+                    Forwarder.forwardRowsToTable(addressIp2,tableName,listOfList);
+                });
+                Future<String> forwarder1 =  executorService.submit( () -> {
+                    List<List<Object>> listOfList = new LinkedList<>();
+                    for(long row=0; row<rows/2 ;row++) {
+                        lock.lock();
+                        Group group;
+                        try {
+                            group = recordReader.read();
+                        } finally {
+                            lock.unlock();
+                        }
+                        listOfList.add(Utils.extractListFromGroup(group, table.getColumns()));
+                        if( listOfList.size() == 500000) {
                             Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
                             listOfList = new LinkedList<>();
                         }
                     }
-                    System.out.println("Forward "+listOfList.size()+" rows to machin1");
-                    Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
-                });
-                executorService.submit( () -> {
-                    List<List<Object>> listOfList = new LinkedList<>();
-                    for(long row=rows/3; row<(2*(rows/3));row++) {
-                        lock.lock();
-                        SimpleGroup simpleGroup;
-                        try {
-                            simpleGroup = (SimpleGroup) recordReader.read();
-                        } finally {
-                            lock.unlock();
-                        }
-                        listOfList.add(Utils.extractListFromGroup(simpleGroup, table.getColumns()));
-                        if (listOfList.size() == 300000) {
-                            System.out.println("Forward "+listOfList.size()+" rows to machin2");
-                            Forwarder.forwardRowsToTable(addressIp2,tableName,listOfList);
-                            listOfList = new LinkedList<>();
-                        }
-                    }
-                    System.out.println("Forward "+listOfList.size()+" rows to machin2");
-                    Forwarder.forwardRowsToTable(addressIp2,tableName,listOfList);
-                });
-                List<List<Object>> listOfList = new LinkedList<>();
-                for(long row=2*(rows/3); row<rows;row++) {
+                    if( !listOfList.isEmpty() )
+                        Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
+                    return "fini";
+                });*/
+                for(long row=0; row<rows;row++) {
                     lock.lock();
-                    SimpleGroup simpleGroup;
+                    Group group;
                     try {
-                        simpleGroup = (SimpleGroup) recordReader.read();
+                        group = recordReader.read();
                     } finally {
                         lock.unlock();
                     }
-                    listOfList.add(Utils.extractListFromGroup(simpleGroup, table.getColumns()));
-                    if (listOfList.size() == 300000) {
-                        table.addAllRows(listOfList);
-                        listOfList = new LinkedList<>();
-                    }
+                    table.addRow(Utils.extractListFromGroup(group, table.getColumns()));
                 }
-                table.addAllRows(listOfList);
-                executorService.shutdown();
+                //table.addAllRows(listOfList);
+                //executorService.shutdown();
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
-        } finally {
-            try {
-                if (fs != null)
-                    fs.delete(path, false);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
         }
         System.out.println("FINI !");
     }
@@ -217,8 +191,8 @@ public class Controller {
             return "Columns are empty";
         else
             new Table(tableName, listColumns);
-        Forwarder.forwardCreateTable(addressIp1,tableName,listColumns);
-        Forwarder.forwardCreateTable(addressIp2,tableName,listColumns);
+        //Forwarder.forwardCreateTable(addressIp1,tableName,listColumns);
+        //Forwarder.forwardCreateTable(addressIp2,tableName,listColumns);
         return "Table created successfully";
     }
 
@@ -238,7 +212,7 @@ public class Controller {
 
         if (table.getColumnsByNames(selectMethod.getSELECT()).isEmpty())
             throw new NotFoundException("No columns matching with any of this names " + selectMethod.getSELECT());
-        ExecutorService executorService = Executors.newFixedThreadPool(2);
+        /*ExecutorService executorService = Executors.newFixedThreadPool(2);
         Future<List<List<Object>>> future1 = executorService.submit(new Callable<List<List<Object>>>() {
             @Override
             public List<List<Object>> call() throws Exception {
@@ -250,16 +224,16 @@ public class Controller {
             public List<List<Object>> call() throws Exception {
                 return Forwarder.forwardGetTableContent(addressIp2,selectMethod);
             }
-        });
+        });*/
 
         List<List<Object>> res = table.select(selectMethod);
-        try {
+        /*try {
             res.addAll(future1.get());
             res.addAll(future2.get());
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }
-        executorService.shutdown();
+        executorService.shutdown();*/
         System.out.println(res.size());
         return res;
     }
@@ -285,13 +259,12 @@ public class Controller {
         Table table = DataBase.get().get(tableName);
         if(table == null)
             throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
-        if( !listArgs.stream().allMatch( list -> list.size() == table.getColumns().size() ) )
-            throw new NotFoundException("Nombre d'arguments invalide dans l'une des lignes.");
-        ExecutorService executorService = Executors.newFixedThreadPool(2);
-        executorService.submit( ()-> Forwarder.forwardRowsToTable(addressIp1,tableName,listArgs.subList(0, listArgs.size()/3)) );
-        executorService.submit( ()-> Forwarder.forwardRowsToTable(addressIp2,tableName,listArgs.subList(listArgs.size()/3, 2*listArgs.size()/3)) );
+
+        //ExecutorService executorService = Executors.newFixedThreadPool(2);
+        //executorService.submit( ()-> Forwarder.forwardRowsToTable(addressIp1,tableName,listArgs.subList(0, listArgs.size()/3)) );
+        //executorService.submit( ()-> Forwarder.forwardRowsToTable(addressIp2,tableName,listArgs.subList(listArgs.size()/3, 2*listArgs.size()/3)) );
         table.addAllRows(listArgs.subList(2*listArgs.size()/3, listArgs.size()).parallelStream().map( list -> table.castRow(list)).collect(Collectors.toList()));
-        executorService.shutdown();
+        //executorService.shutdown();
         return "Rows added successfully !";
     }
 }

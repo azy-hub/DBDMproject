@@ -1,24 +1,18 @@
 package org.dant.model;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.parquet.example.data.simple.SimpleGroup;
-import org.dant.Forwarder;
+import org.dant.select.Aggregat;
+import org.dant.select.Condition;
+import org.dant.select.SelectMethod;
 
 import java.math.BigDecimal;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class Table {
 
     private String name;
     private List<Column> columns;
+    private List<Column> indexedColumns;
 
     private List<List<Object>> rows;
 
@@ -27,26 +21,26 @@ public class Table {
     public Table() {
     }
 
-    public Table(String name) {
-        this.name = name;
-        columns = new ArrayList<>();
-        rows = new LinkedList<>();
-        DataBase.get().put(name,this);
-    }
-
     public Table(String name, List<Column> columns) {
         this.name = name;
-        this.columns = columns;
-        rows = new LinkedList<>();
+        this.columns = new ArrayList<>();
+        for(Column column : columns) {
+            this.columns.add( new Column(column.getName(), column.getType()) );
+        }
+        indexedColumns = new ArrayList<>();
+        rows = new ArrayList<>();
         DataBase.get().put(name,this);
     }
 
     public void addRow(List<Object> row) {
-        lockAdd.lock();
-        try {
-            rows.add(row);
-        } finally {
-            lockAdd.unlock();
+        int nbRow = rows.size();
+        rows.add(row);
+        for(Column column : indexedColumns) {
+            Map<Object,List<Integer>> map = column.getIndex();
+            Object obj = row.get(columns.indexOf(column));
+            if (!map.containsKey(obj))
+                map.put(obj,new ArrayList<>());
+            map.get(obj).add(nbRow);
         }
     }
 
@@ -71,11 +65,25 @@ public class Table {
         return columns;
     }
 
+    public List<Column> getIndexedColumns() {
+        return indexedColumns;
+    }
+
+    public void setIndexedColumns(List<Column> indexedColumns) {
+        this.indexedColumns = indexedColumns;
+    }
+
     public List<Column> getColumnsByNames(List<String> list) {
         if (list.contains("*")) {
             return columns;
         }
-        return columns.stream().filter( column -> list.contains(column.getName()) ).collect(Collectors.toList());
+        return list.stream().map( nameColumn -> {
+            for( Column column : columns) {
+                if( column.getName().equals(nameColumn))
+                    return column;
+            }
+            return null;
+        } ).collect(Collectors.toList());
     }
 
     public void setColumns(List<Column> columns) {
@@ -139,56 +147,6 @@ public class Table {
         return columnList.stream().map( column -> row.get(columns.indexOf(column)) ).collect(Collectors.toList());
     }
 
-    public void addRowFromSimpleGroup(SimpleGroup simpleGroup) {
-        List<Object> list = new ArrayList<>();
-        for (Column column : getColumns()) {
-            try {
-                switch (column.getType()) {
-                    case TypeDB.DOUBLE:
-                        list.add(simpleGroup.getDouble(column.getName(),0));
-                        break;
-                    case TypeDB.STRING:
-                        list.add(simpleGroup.getString(column.getName(), 0));
-                        break;
-                    case TypeDB.LONG:
-                        list.add(simpleGroup.getLong(column.getName(), 0));
-                        break;
-                    default:
-                        list.add(null);
-                        break;
-                }
-            } catch (RuntimeException e) {
-                list.add(null);
-            }
-        }
-        addRow(list);
-    }
-
-    public void forwardRowFromSimpleGroup(SimpleGroup simpleGroup, String ipAddress) {
-        List<Object> list = new ArrayList<>();
-        for (Column column : getColumns()) {
-            try {
-                switch (column.getType()) {
-                    case TypeDB.DOUBLE:
-                        list.add(simpleGroup.getDouble(column.getName(),0));
-                        break;
-                    case TypeDB.STRING:
-                        list.add(simpleGroup.getString(column.getName(), 0));
-                        break;
-                    case TypeDB.LONG:
-                        list.add(simpleGroup.getLong(column.getName(), 0));
-                        break;
-                    default:
-                        list.add(null);
-                        break;
-                }
-            } catch (RuntimeException e) {
-                list.add(null);
-            }
-        }
-        Forwarder.forwardRowToTable(ipAddress, getName(), list);
-    }
-
     public List<List<Object>> select(SelectMethod selectMethod) {
         List<List<Object>> res;
         List<Column> columnList = getColumnsByNames(selectMethod.getSELECT());
@@ -205,40 +163,88 @@ public class Table {
                     .map( row -> transform(row,columnList) )
                     .collect(Collectors.toList());
         }
+
+        if (selectMethod.getGROUPBY() != null && selectMethod.getAGGREGAT() != null && !selectMethod.getAGGREGAT().isEmpty()) {
+            int idxOfColumnGroupBy = 0;
+            for(Column column : columnList) {
+                if (column.getName().equals(selectMethod.getGROUPBY())) {
+                    idxOfColumnGroupBy = columnList.indexOf(column);
+                }
+            }
+
+            // appliquer le groupBy pour tout mettre dans une Map (chaque valeur associé aux lignes de la table qui lui correspondent)
+            int finalIdxOfColumnGroupBy1 = idxOfColumnGroupBy;
+            Map<Object, List<List<Object>>> groupBy = new HashMap<>();
+            res.forEach(list -> {
+                Object object = list.get(finalIdxOfColumnGroupBy1);
+                groupBy.computeIfAbsent(object, k -> new ArrayList<>()).add(list);
+            });
+
+
+
+            List<List<Object>> resultat = new ArrayList<>(groupBy.keySet().size());
+            groupBy.forEach( (obj,list) -> {
+                List<Object> tmp = new ArrayList<>();
+                tmp.add(obj);
+                for(Aggregat aggregat : selectMethod.getAGGREGAT()) {
+                    int idxOfAggregat = 0;
+                    for(Column column : columnList) {
+                        if (column.getName().equals(aggregat.getNameColumn())) {
+                            idxOfAggregat = columnList.indexOf(column);
+                        }
+                    }
+                    tmp.add(aggregat.applyAggregat(list, idxOfAggregat, columnList.get(idxOfAggregat).getType()));
+                }
+                resultat.add(tmp);
+            });
+            res = resultat;
+        }
+
         return res;
     }
 
     public List<Object> castRow(List<Object> args) {
         List<Object> list = new ArrayList<>(columns.size());
         for(int i=0; i<columns.size(); i++) {
-            try {
+            if (args.get(i) == null)
+                list.add(null);
+            else {
                 switch (columns.get(i).getType()) {
                     case TypeDB.DOUBLE:
-                        list.add( ((BigDecimal)args.get(i)).doubleValue() );
+                        list.add(((BigDecimal) args.get(i)).doubleValue());
                         break;
                     case TypeDB.STRING:
-                        list.add( args.get(i) );
+                        list.add(args.get(i));
                         break;
                     case TypeDB.LONG:
-                        list.add( ((BigDecimal)args.get(i)).longValue() );
+                        list.add(((BigDecimal) args.get(i)).longValue());
                         break;
                     case TypeDB.INT:
-                        list.add( ((BigDecimal)args.get(i)).intValue() );
+                        list.add(((BigDecimal) args.get(i)).intValue());
                         break;
                     case TypeDB.SHORT:
-                        list.add( ((BigDecimal)args.get(i)).shortValue() );
+                        list.add(((BigDecimal) args.get(i)).shortValue());
                         break;
                     case TypeDB.BYTE:
-                        list.add( ((BigDecimal)args.get(i)).byteValue() );
+                        list.add(((BigDecimal) args.get(i)).byteValue());
                         break;
                     default:
                         list.add(null);
                         break;
                 }
-            } catch (RuntimeException e) {
-                list.add(null);
             }
         }
         return list;
     }
+
+    public void createIndexColumn(List<Integer> cardinalite, int tailleEchantillon) {
+        for(int i=0; i<cardinalite.size(); i++) {
+            if(cardinalite.get(i) < tailleEchantillon*0.1) {
+                columns.get(i).setIsIndex(true);
+                columns.get(i).setIndex(new HashMap<>());
+                indexedColumns.add(columns.get(i));
+            }
+        }
+    }
+
 }
