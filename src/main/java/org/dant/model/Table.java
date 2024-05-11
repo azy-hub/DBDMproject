@@ -1,5 +1,6 @@
 package org.dant.model;
 
+import org.dant.select.Aggregat;
 import org.dant.select.Condition;
 import org.dant.select.SelectMethod;
 
@@ -163,17 +164,11 @@ public class Table {
                     .collect(Collectors.toList());
         }
 
-        if (selectMethod.getGROUPBY() != null) {
+        if (selectMethod.getGROUPBY() != null && selectMethod.getAGGREGAT() != null && !selectMethod.getAGGREGAT().isEmpty()) {
             int idxOfColumnGroupBy = 0;
             for(Column column : columnList) {
                 if (column.getName().equals(selectMethod.getGROUPBY())) {
                     idxOfColumnGroupBy = columnList.indexOf(column);
-                }
-            }
-            int idxOfColumnAggregat = 0;
-            for(Column column : columnList) {
-                if (column.getName().equals(selectMethod.getAGGREGAT().getNameColumn())) {
-                    idxOfColumnAggregat = columnList.indexOf(column);
                 }
             }
             Set<Object> set = new HashSet<>();
@@ -184,7 +179,15 @@ public class Table {
                 List<Object> tmp = new ArrayList<>();
                 tmp.add(object);
                 List<List<Object>> listeObject = res.parallelStream().filter( list -> list.get(finalIdxOfColumnGroupBy).equals(object)).collect(Collectors.toList());
-                tmp.add(selectMethod.getAGGREGAT().applyAggregat(listeObject,idxOfColumnAggregat,columnList.get(idxOfColumnAggregat).getType()));
+                for(Aggregat aggregat : selectMethod.getAGGREGAT()) {
+                    int idxOfAggregat = 0;
+                    for(Column column : columnList) {
+                        if (column.getName().equals(aggregat.getNameColumn())) {
+                            idxOfAggregat = columnList.indexOf(column);
+                        }
+                    }
+                    tmp.add(aggregat.applyAggregat(listeObject, idxOfAggregat, columnList.get(idxOfAggregat).getType()));
+                }
                 listeResultat.add(tmp);
             }
             res = listeResultat;

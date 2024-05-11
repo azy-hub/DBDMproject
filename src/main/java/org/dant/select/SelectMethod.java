@@ -8,12 +8,12 @@ public class SelectMethod {
     private String FROM;
     private List<Condition> WHERE;
     private String GROUPBY;
-    private Aggregat AGGREGAT;
+    private List<Aggregat> AGGREGAT;
 
     public SelectMethod() {
     }
 
-    public SelectMethod(List<String> SELECT, String FROM, List<Condition> WHERE, String GROUPBY, Aggregat AGGREGAT) {
+    public SelectMethod(List<String> SELECT, String FROM, List<Condition> WHERE, String GROUPBY, List<Aggregat> AGGREGAT) {
         this.SELECT = SELECT;
         this.FROM = FROM;
         this.WHERE = WHERE;
@@ -53,11 +53,11 @@ public class SelectMethod {
         this.GROUPBY = GROUPBY;
     }
 
-    public Aggregat getAGGREGAT() {
+    public List<Aggregat> getAGGREGAT() {
         return AGGREGAT;
     }
 
-    public void setAGGREGAT(Aggregat AGGREGAT) {
+    public void setAGGREGAT(List<Aggregat> AGGREGAT) {
         this.AGGREGAT = AGGREGAT;
     }
 }
