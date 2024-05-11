@@ -89,7 +89,7 @@ public class Controller {
             PageReadStore pages;
 
             while ((pages = parquetFileReader.readNextRowGroup()) != null) {
-                long rows = 3000000;//pages.getRowCount();
+                long rows = 300;//pages.getRowCount();
                 RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
                 final SpinLock lock = new SpinLock();
 

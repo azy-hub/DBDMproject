@@ -171,14 +171,21 @@ public class Table {
                     idxOfColumnGroupBy = columnList.indexOf(column);
                 }
             }
-            Set<Object> set = new HashSet<>();
-            int finalIdxOfColumnGroupBy = idxOfColumnGroupBy;
-            res.stream().forEach(list -> set.add(list.get(finalIdxOfColumnGroupBy)) );
-            List<List<Object>> listeResultat = new ArrayList<>();
-            for(Object object : set) {
+
+            // appliquer le groupBy pour tout mettre dans une Map (chaque valeur associé aux lignes de la table qui lui correspondent)
+            int finalIdxOfColumnGroupBy1 = idxOfColumnGroupBy;
+            Map<Object, List<List<Object>>> groupBy = new HashMap<>();
+            res.forEach(list -> {
+                Object object = list.get(finalIdxOfColumnGroupBy1);
+                groupBy.computeIfAbsent(object, k -> new ArrayList<>()).add(list);
+            });
+
+
+
+            List<List<Object>> resultat = new ArrayList<>(groupBy.keySet().size());
+            groupBy.forEach( (obj,list) -> {
                 List<Object> tmp = new ArrayList<>();
-                tmp.add(object);
-                List<List<Object>> listeObject = res.parallelStream().filter( list -> list.get(finalIdxOfColumnGroupBy).equals(object)).collect(Collectors.toList());
+                tmp.add(obj);
                 for(Aggregat aggregat : selectMethod.getAGGREGAT()) {
                     int idxOfAggregat = 0;
                     for(Column column : columnList) {
@@ -186,11 +193,11 @@ public class Table {
                             idxOfAggregat = columnList.indexOf(column);
                         }
                     }
-                    tmp.add(aggregat.applyAggregat(listeObject, idxOfAggregat, columnList.get(idxOfAggregat).getType()));
+                    tmp.add(aggregat.applyAggregat(list, idxOfAggregat, columnList.get(idxOfAggregat).getType()));
                 }
-                listeResultat.add(tmp);
-            }
-            res = listeResultat;
+                resultat.add(tmp);
+            });
+            res = resultat;
         }
 
         return res;
