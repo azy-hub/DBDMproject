@@ -9,13 +9,16 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
 
+import gnu.trove.TIntArrayList;
+
+
 public class Column {
 
     private String name;
     private String type;
     public Function<Group,Object> extractFromGroup;
     private boolean isIndex;
-    private Map<Object,List<Integer>> index;
+    private Map<Object,TIntArrayList> index;
 
 
 
@@ -91,11 +94,11 @@ public class Column {
         isIndex = index;
     }
 
-    public Map<Object, List<Integer>> getIndex() {
+    public Map<Object, TIntArrayList> getIndex() {
         return index;
     }
 
-    public void setIndex(Map<Object, List<Integer>> index) {
+    public void setIndex(Map<Object, TIntArrayList> index) {
         this.index = index;
     }
 }

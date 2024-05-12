@@ -22,6 +22,7 @@ import org.dant.model.*;
 import org.dant.select.SelectMethod;
 import org.jboss.resteasy.reactive.RestPath;
 
+import gnu.trove.TIntArrayList;
 
 import java.io.File;
 import java.io.IOException;

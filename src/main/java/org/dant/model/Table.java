@@ -1,5 +1,6 @@
 package org.dant.model;
 
+import gnu.trove.TIntArrayList;
 import org.dant.Utils;
 import org.dant.select.Aggregat;
 import org.dant.select.Condition;
@@ -37,9 +38,9 @@ public class Table {
         int idxRow = rows.size();
         rows.add(row);
         for(Column column : indexedColumns) {
-            Map<Object,List<Integer>> map = column.getIndex();
+            Map<Object, TIntArrayList> map = column.getIndex();
             Object obj = row.get(columns.indexOf(column));
-            map.computeIfAbsent(obj, k -> new ArrayList<>()).add(idxRow);
+            map.computeIfAbsent(obj, k -> new TIntArrayList()).add(idxRow);
         }
     }
 
@@ -156,10 +157,10 @@ public class Table {
             if( !conditionsOnIndexedColumn.isEmpty() ) {
                 System.out.println("Indexation");
                 int idxColumn = getIndexOfColumnByCondition(conditionsOnIndexedColumn.get(0),columnList);
-                List<Integer> idxRows = new ArrayList<>();
-                List<Integer> listOfIndex = columnList.get( idxColumn ).getIndex().get(Utils.cast(conditionsOnIndexedColumn.get(0).getValue(),columnList.get(idxColumn).getType()));
+                TIntArrayList idxRows = new TIntArrayList();
+                TIntArrayList listOfIndex = columnList.get( idxColumn ).getIndex().get(Utils.cast(conditionsOnIndexedColumn.get(0).getValue(),columnList.get(idxColumn).getType()));
                 if(listOfIndex != null) {
-                    idxRows.addAll(listOfIndex);
+                    idxRows = listOfIndex;
                 }
                 for(int i=1; i<conditionsOnIndexedColumn.size(); i++) {
                     int indexOfColumn = getIndexOfColumnByCondition(conditionsOnIndexedColumn.get(i), columnList);
@@ -167,14 +168,14 @@ public class Table {
                     if(listOfIndex != null) {
                         idxRows = Utils.intersectionSortedList(idxRows,listOfIndex);
                     } else {
-                        idxRows = new ArrayList<>();
+                        idxRows = new TIntArrayList();
                         break;
                     }
                 }
                 System.out.println(idxRows.size());
                 List<List<Object>> resultat = new ArrayList<>(idxRows.size());
-                for(Integer idx : idxRows) {
-                    resultat.add( res.get(idx) );
+                for(int idx=0; idx<idxRows.size(); idx++) {
+                    resultat.add( res.get(idxRows.get(idx)) );
                 }
                 res = resultat;
                 conditions.removeAll(conditionsOnIndexedColumn);

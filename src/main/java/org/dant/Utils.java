@@ -1,5 +1,7 @@
 package org.dant;
 
+import gnu.trove.TIntArrayList;
+import gnu.trove.TIntIterator;
 import org.apache.parquet.example.data.Group;
 import org.apache.parquet.example.data.simple.SimpleGroup;
 import org.dant.model.Column;
@@ -31,17 +33,17 @@ public class Utils {
         };
     }
 
-    public static List<Integer> intersectionSortedList(List<Integer> list1, List<Integer> list2) {
-        List<Integer> list = new ArrayList<>();
+    public static TIntArrayList intersectionSortedList(TIntArrayList list1, TIntArrayList list2) {
+        TIntArrayList list = new TIntArrayList();
         int j=0;
         int k=0;
         while(j<list1.size() && k<list2.size()) {
-            if( list1.get(j).equals(list2.get(k)) ) {
+            if( list1.getQuick(j) == list2.getQuick(k) ) {
                 list.add(list1.get(j));
                 j++;
                 k++;
             }
-            if( list1.get(j).compareTo(list2.get(k)) < 0 ) {
+            if( list1.getQuick(j) < (list2.getQuick(k)) ) {
                 j++;
             } else {
                 k++;
