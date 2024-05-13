@@ -68,7 +68,7 @@ public class Slave {
         Table table = DataBase.get().get(tableName);
         if(table == null)
             throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
-        table.addAllRows(listArgs.stream().map( list -> table.castRow(list)).collect(Collectors.toList()));
+        table.addAllRows(listArgs.stream().map( list -> Utils.castRow(list,table.getColumns())).collect(Collectors.toList()));
         System.out.println(listArgs.size()+" rows added !");
     }
 

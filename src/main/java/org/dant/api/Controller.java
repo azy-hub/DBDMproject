@@ -17,9 +17,11 @@ import org.apache.parquet.io.RecordReader;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.parquet.schema.MessageType;
+import org.dant.commons.TypeDB;
 import org.dant.commons.Utils;
 import org.dant.commons.SpinLock;
 import org.dant.model.*;
+import org.dant.select.Aggregat;
 import org.dant.select.SelectMethod;
 import org.jboss.resteasy.reactive.RestPath;
 import java.io.File;
@@ -87,25 +89,27 @@ public class Controller {
             PageReadStore pages;
 
             while ((pages = parquetFileReader.readNextRowGroup()) != null) {
-                long rows = 5000000;//pages.getRowCount();
+                long rows = 5000;//pages.getRowCount();
                 RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
                 final SpinLock lock = new SpinLock();
 
-                List<Set<Object>> echantillon = new ArrayList<>(table.getColumns().size());
-                for (Column column : table.getColumns()) {
-                    echantillon.add(new HashSet<>());
-                }
                 int tailleEchantillon = 20000;
-                for(int i=0; i<tailleEchantillon; i++) {
-                    List<Object> list = Utils.extractListFromGroup(recordReader.read(), table.getColumns());
-                    for(int j=0; j<table.getColumns().size(); j++) {
-                        Object obj = list.get(j);
-                        if (obj != null)
-                            echantillon.get(j).add(list.get(j));
+                if( rows > tailleEchantillon) {
+                    List<Set<Object>> echantillon = new ArrayList<>(table.getColumns().size());
+                    for (Column column : table.getColumns()) {
+                        echantillon.add(new HashSet<>());
                     }
+                    for (int i = 0; i < tailleEchantillon; i++) {
+                        List<Object> list = Utils.extractListFromGroup(recordReader.read(), table.getColumns());
+                        for (int j = 0; j < table.getColumns().size(); j++) {
+                            Object obj = list.get(j);
+                            if (obj != null)
+                                echantillon.get(j).add(list.get(j));
+                        }
+                    }
+                    List<Integer> cardinalite = echantillon.stream().map(Set::size).collect(Collectors.toList());
+                    table.createIndexColumn(cardinalite, tailleEchantillon);
                 }
-                List<Integer> cardinalite = echantillon.stream().map(Set::size).collect(Collectors.toList());
-                table.createIndexColumn(cardinalite,tailleEchantillon);
 
                 //ExecutorService executorService = Executors.newFixedThreadPool(2);
 
@@ -143,6 +147,7 @@ public class Controller {
                         Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
                     return "fini";
                 });*/
+                List<List<Object>> listOfList = new ArrayList<>((int)rows);
                 for(long row=0; row<rows;row++) {
                     lock.lock();
                     Group group;
@@ -151,9 +156,9 @@ public class Controller {
                     } finally {
                         lock.unlock();
                     }
-                    table.addRow(Utils.extractListFromGroup(group, table.getColumns()));
+                    listOfList.add(Utils.extractListFromGroup(group, table.getColumns()));
                 }
-                //table.addAllRows(listOfList);
+                table.addAllRows(listOfList);
                 //executorService.shutdown();
             }
         } catch (Exception e) {
@@ -204,12 +209,9 @@ public class Controller {
         if (table == null)
             throw new NotFoundException("La table avec le nom " + selectMethod.getFROM() + " n'a pas été trouvée.");
 
-        if (!table.checkConditions(selectMethod.getWHERE()))
-            throw new NotFoundException("No condition found");
+        if (!table.checkSelectMethod(selectMethod))
+            throw new NotFoundException("Params error");
 
-
-        if (table.getColumnsByNames(selectMethod.getSELECT()).isEmpty())
-            throw new NotFoundException("No columns matching with any of this names " + selectMethod.getSELECT());
         /*ExecutorService executorService = Executors.newFixedThreadPool(2);
         Future<List<List<Object>>> future1 = executorService.submit(new Callable<List<List<Object>>>() {
             @Override
@@ -232,6 +234,35 @@ public class Controller {
             throw new RuntimeException(e);
         }
         executorService.shutdown();*/
+
+        if (selectMethod.getGROUPBY() != null && selectMethod.getAGGREGAT() != null && !selectMethod.getAGGREGAT().isEmpty()) {
+            int idxOfColumnGroupBy = 0;
+            // appliquer le groupBy pour tout mettre dans une Map (chaque valeur associé aux lignes de la table qui lui correspondent)
+            Map<Object, List<List<Object>>> groupBy = new HashMap<>();
+            res.forEach(list -> {
+                Object object = list.get(0);
+                groupBy.computeIfAbsent(object, k -> new ArrayList<>()).add(list);
+            });
+
+            List<List<Object>> resultat = new ArrayList<>(groupBy.keySet().size());
+            groupBy.forEach( (obj,list) -> {
+                List<Object> tmp = new ArrayList<>(1+selectMethod.getAGGREGAT().size());
+                tmp.add(obj);
+                for(int idxOfAggregat=0; idxOfAggregat<selectMethod.getAGGREGAT().size(); idxOfAggregat++) {
+                    Aggregat aggregat = selectMethod.getAGGREGAT().get(idxOfAggregat);
+                    if( aggregat.getTypeAggregat().equals("COUNT") ) {
+                        aggregat.setTypeAggregat("SUM");
+                        tmp.add(aggregat.applyAggregat(list, idxOfAggregat+1, TypeDB.INT));
+                        aggregat.setTypeAggregat("COUNT");
+                    } else {
+                        tmp.add(aggregat.applyAggregat(list, idxOfAggregat+1, table.getColumnByName(aggregat.getNameColumn()).getType()));
+                    }
+                }
+                resultat.add(tmp);
+            });
+            res = resultat;
+        }
+
         System.out.println(res.size());
         return res;
     }
@@ -261,7 +292,7 @@ public class Controller {
         //ExecutorService executorService = Executors.newFixedThreadPool(2);
         //executorService.submit( ()-> Forwarder.forwardRowsToTable(addressIp1,tableName,listArgs.subList(0, listArgs.size()/3)) );
         //executorService.submit( ()-> Forwarder.forwardRowsToTable(addressIp2,tableName,listArgs.subList(listArgs.size()/3, 2*listArgs.size()/3)) );
-        table.addAllRows(listArgs.subList(2*listArgs.size()/3, listArgs.size()).parallelStream().map( list -> table.castRow(list)).collect(Collectors.toList()));
+        table.addAllRows(listArgs.subList(2*listArgs.size()/3, listArgs.size()).parallelStream().map( list -> Utils.castRow(list, table.getColumns())).collect(Collectors.toList()));
         //executorService.shutdown();
         return "Rows added successfully !";
     }

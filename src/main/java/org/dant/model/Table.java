@@ -28,7 +28,7 @@ public class Table {
 
     public Table(String name, List<Column> columns) {
         this.name = name;
-        this.columns = new ArrayList<>();
+        this.columns = new ArrayList<>(columns.size());
         for(Column column : columns) {
             this.columns.add( new Column(column.getName(), column.getType()) );
         }
@@ -72,6 +72,14 @@ public class Table {
 
     public void setIndexedColumns(List<Column> indexedColumns) {
         this.indexedColumns = indexedColumns;
+    }
+
+    public Column getColumnByName(String nameColumn) {
+        for( Column column : columns) {
+            if( column.getName().equals(nameColumn))
+                return column;
+        }
+        return null;
     }
 
     public List<Column> getColumnsByNames(List<String> list) {
@@ -122,6 +130,22 @@ public class Table {
         return (conditions == null) || conditions.stream().allMatch(this::checkCondition);
     }
 
+    public boolean checkSelectMethod(SelectMethod selectMethod) {
+        if ( !((selectMethod.getWHERE() == null) || selectMethod.getWHERE().stream().allMatch(this::checkCondition)))
+            return false;
+        if ( getColumnsByNames(selectMethod.getSELECT()).isEmpty() )
+            return false;
+        if ( selectMethod.getGROUPBY() != null && selectMethod.getGROUPBY().isEmpty() ) {
+            if ( selectMethod.getSELECT().stream().noneMatch(columnName -> columnName.equals(selectMethod.getGROUPBY()) ) )
+                return false;
+            if ( selectMethod.getAGGREGAT().stream().anyMatch( aggregat -> aggregat.getNameColumn().equals(selectMethod.getGROUPBY()) ) )
+                return false;
+            if ( selectMethod.getAGGREGAT().stream().anyMatch( aggregat -> !selectMethod.getSELECT().contains(aggregat.getNameColumn()) ) )
+                return false;
+        }
+        return true;
+    }
+
     public int getIndexOfColumnByCondition (Condition condition, List<Column> columns) {
         for (Column column : columns) {
             if (condition.getNameColumn().equals(column.getName())) {
@@ -156,7 +180,6 @@ public class Table {
         if ( !(conditions == null || conditions.isEmpty())) {
             List<Condition> conditionsOnIndexedColumn = conditions.stream().filter( condition -> isConditionOnIndexedColumn(condition,columnList)).collect(Collectors.toList());
             if( !conditionsOnIndexedColumn.isEmpty() ) {
-                System.out.println("Indexation");
                 int idxColumn = getIndexOfColumnByCondition(conditionsOnIndexedColumn.get(0),columnList);
                 TIntArrayList idxRows = new TIntArrayList();
                 TIntArrayList listOfIndex = columnList.get( idxColumn ).getIndex().getIndexsFromValue(Utils.cast(conditionsOnIndexedColumn.get(0).getValue(),columnList.get(idxColumn).getType()));
@@ -173,7 +196,6 @@ public class Table {
                         break;
                     }
                 }
-                System.out.println(idxRows.size());
                 List<List<Object>> resultat = new ArrayList<>(idxRows.size());
                 for(int idx=0; idx<idxRows.size(); idx++) {
                     resultat.add( res.get(idxRows.get(idx)) );
@@ -182,7 +204,6 @@ public class Table {
                 conditions.removeAll(conditionsOnIndexedColumn);
             }
             if( !conditions.isEmpty()) {
-                System.out.println("Filtre sans indexation");
                 List<Integer> idx = getIndexOfColumnsByConditions(conditions, columnList);
                 List<String> type = idx.stream().map(indice -> columnList.get(indice).getType()).toList();
                 res = res.parallelStream().filter(list -> validate(list, conditions, idx, type))
@@ -191,32 +212,21 @@ public class Table {
         }
 
         if (selectMethod.getGROUPBY() != null && selectMethod.getAGGREGAT() != null && !selectMethod.getAGGREGAT().isEmpty()) {
-            int idxOfColumnGroupBy = 0;
-            for(Column column : columnList) {
-                if (column.getName().equals(selectMethod.getGROUPBY())) {
-                    idxOfColumnGroupBy = columnList.indexOf(column);
-                }
-            }
+            int idxOfColumnGroupBy = Utils.getIdxColumnByName(columnList, selectMethod.getGROUPBY());
 
             // appliquer le groupBy pour tout mettre dans une Map (chaque valeur associé aux lignes de la table qui lui correspondent)
-            int finalIdxOfColumnGroupBy1 = idxOfColumnGroupBy;
             Map<Object, List<List<Object>>> groupBy = new HashMap<>();
             res.forEach(list -> {
-                Object object = list.get(finalIdxOfColumnGroupBy1);
+                Object object = list.get(idxOfColumnGroupBy);
                 groupBy.computeIfAbsent(object, k -> new ArrayList<>()).add(list);
             });
 
             List<List<Object>> resultat = new ArrayList<>(groupBy.keySet().size());
             groupBy.forEach( (obj,list) -> {
-                List<Object> tmp = new ArrayList<>();
+                List<Object> tmp = new ArrayList<>(1+selectMethod.getAGGREGAT().size());
                 tmp.add(obj);
                 for(Aggregat aggregat : selectMethod.getAGGREGAT()) {
-                    int idxOfAggregat = 0;
-                    for(Column column : columnList) {
-                        if (column.getName().equals(aggregat.getNameColumn())) {
-                            idxOfAggregat = columnList.indexOf(column);
-                        }
-                    }
+                    int idxOfAggregat = Utils.getIdxColumnByName(columnList, aggregat.getNameColumn());
                     tmp.add(aggregat.applyAggregat(list, idxOfAggregat, columnList.get(idxOfAggregat).getType()));
                 }
                 resultat.add(tmp);
@@ -225,40 +235,6 @@ public class Table {
         }
 
         return res;
-    }
-
-    public List<Object> castRow(List<Object> args) {
-        List<Object> list = new ArrayList<>(columns.size());
-        for(int i=0; i<columns.size(); i++) {
-            if (args.get(i) == null)
-                list.add(null);
-            else {
-                switch (columns.get(i).getType()) {
-                    case TypeDB.DOUBLE:
-                        list.add(((BigDecimal) args.get(i)).doubleValue());
-                        break;
-                    case TypeDB.STRING:
-                        list.add(args.get(i));
-                        break;
-                    case TypeDB.LONG:
-                        list.add(((BigDecimal) args.get(i)).longValue());
-                        break;
-                    case TypeDB.INT:
-                        list.add(((BigDecimal) args.get(i)).intValue());
-                        break;
-                    case TypeDB.SHORT:
-                        list.add(((BigDecimal) args.get(i)).shortValue());
-                        break;
-                    case TypeDB.BYTE:
-                        list.add(((BigDecimal) args.get(i)).byteValue());
-                        break;
-                    default:
-                        list.add(null);
-                        break;
-                }
-            }
-        }
-        return list;
     }
 
     public void createIndexColumn(List<Integer> cardinalite, int tailleEchantillon) {
