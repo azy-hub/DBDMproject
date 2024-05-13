@@ -1,4 +1,4 @@
-package org.dant.model;
+package org.dant.commons;
 
 public interface TypeDB {
 
