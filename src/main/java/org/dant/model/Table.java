@@ -1,7 +1,10 @@
 package org.dant.model;
 
 import gnu.trove.TIntArrayList;
-import org.dant.Utils;
+import org.dant.commons.Utils;
+import org.dant.commons.SpinLock;
+import org.dant.commons.TypeDB;
+import org.dant.index.HashMapIndex;
 import org.dant.select.Aggregat;
 import org.dant.select.Condition;
 import org.dant.select.SelectMethod;
@@ -38,9 +41,7 @@ public class Table {
         int idxRow = rows.size();
         rows.add(row);
         for(Column column : indexedColumns) {
-            Map<Object, TIntArrayList> map = column.getIndex();
-            Object obj = row.get(columns.indexOf(column));
-            map.computeIfAbsent(obj, k -> new TIntArrayList()).add(idxRow);
+            column.getIndex().addIndex(row.get(columns.indexOf(column)),idxRow);
         }
     }
 
@@ -158,13 +159,13 @@ public class Table {
                 System.out.println("Indexation");
                 int idxColumn = getIndexOfColumnByCondition(conditionsOnIndexedColumn.get(0),columnList);
                 TIntArrayList idxRows = new TIntArrayList();
-                TIntArrayList listOfIndex = columnList.get( idxColumn ).getIndex().get(Utils.cast(conditionsOnIndexedColumn.get(0).getValue(),columnList.get(idxColumn).getType()));
+                TIntArrayList listOfIndex = columnList.get( idxColumn ).getIndex().getIndexsFromValue(Utils.cast(conditionsOnIndexedColumn.get(0).getValue(),columnList.get(idxColumn).getType()));
                 if(listOfIndex != null) {
                     idxRows = listOfIndex;
                 }
                 for(int i=1; i<conditionsOnIndexedColumn.size(); i++) {
                     int indexOfColumn = getIndexOfColumnByCondition(conditionsOnIndexedColumn.get(i), columnList);
-                    listOfIndex = columnList.get(indexOfColumn).getIndex().get(conditionsOnIndexedColumn.get(i).getValue());
+                    listOfIndex = columnList.get(indexOfColumn).getIndex().getIndexsFromValue(conditionsOnIndexedColumn.get(i).getValue());
                     if(listOfIndex != null) {
                         idxRows = Utils.intersectionSortedList(idxRows,listOfIndex);
                     } else {
@@ -264,7 +265,7 @@ public class Table {
         for(int i=0; i<cardinalite.size(); i++) {
             if(cardinalite.get(i) < tailleEchantillon*0.1) {
                 columns.get(i).setIsIndex(true);
-                columns.get(i).setIndex(new HashMap<>());
+                columns.get(i).setIndex(new HashMapIndex());
                 indexedColumns.add(columns.get(i));
             }
         }

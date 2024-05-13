@@ -1,15 +1,10 @@
 package org.dant.model;
 
 import org.apache.parquet.example.data.Group;
-import org.apache.parquet.example.data.simple.SimpleGroup;
-import org.jboss.logging.annotations.Once;
+import org.dant.commons.TypeDB;
+import org.dant.index.Index;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import java.util.function.Function;
-
-import gnu.trove.TIntArrayList;
 
 
 public class Column {
@@ -18,7 +13,7 @@ public class Column {
     private String type;
     public Function<Group,Object> extractFromGroup;
     private boolean isIndex;
-    private Map<Object,TIntArrayList> index;
+    private Index index;
 
 
 
@@ -94,11 +89,11 @@ public class Column {
         isIndex = index;
     }
 
-    public Map<Object, TIntArrayList> getIndex() {
+    public Index getIndex() {
         return index;
     }
 
-    public void setIndex(Map<Object, TIntArrayList> index) {
+    public void setIndex(Index index) {
         this.index = index;
     }
 }

@@ -1,4 +1,4 @@
-package org.dant;
+package org.dant.commons;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;

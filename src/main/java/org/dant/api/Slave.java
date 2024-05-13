@@ -1,4 +1,4 @@
-package org.dant;
+package org.dant.api;
 
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -13,6 +13,7 @@ import org.apache.parquet.hadoop.util.HadoopInputFile;
 import org.apache.parquet.io.ColumnIOFactory;
 import org.apache.parquet.io.RecordReader;
 import org.apache.parquet.schema.MessageType;
+import org.dant.commons.Utils;
 import org.dant.model.*;
 import org.dant.select.SelectMethod;
 import org.jboss.resteasy.reactive.RestPath;

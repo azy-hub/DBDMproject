@@ -1,11 +1,9 @@
-package org.dant;
+package org.dant.commons;
 
 import gnu.trove.TIntArrayList;
-import gnu.trove.TIntIterator;
 import org.apache.parquet.example.data.Group;
-import org.apache.parquet.example.data.simple.SimpleGroup;
 import org.dant.model.Column;
-import org.dant.model.TypeDB;
+import org.dant.commons.TypeDB;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
