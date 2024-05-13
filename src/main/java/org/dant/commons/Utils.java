@@ -4,6 +4,7 @@ import gnu.trove.TIntArrayList;
 import org.apache.parquet.example.data.Group;
 import org.dant.model.Column;
 import org.dant.commons.TypeDB;
+import org.dant.select.Condition;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -91,6 +92,19 @@ public class Utils {
             }
         }
         return -1;
+    }
+
+    public static int getIndexOfColumnByCondition (Condition condition, List<Column> columns) {
+        for (Column column : columns) {
+            if (condition.getNameColumn().equals(column.getName())) {
+                return columns.indexOf(column);
+            }
+        }
+        return -1;
+    }
+
+    public static List<Integer> getIndexOfColumnsByConditions(List<Condition> conditions, List<Column> colonnes) {
+        return conditions.stream().map( condition -> Utils.getIndexOfColumnByCondition(condition,colonnes) ).toList();
     }
 
 }

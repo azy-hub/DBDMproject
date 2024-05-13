@@ -89,27 +89,9 @@ public class Controller {
             PageReadStore pages;
 
             while ((pages = parquetFileReader.readNextRowGroup()) != null) {
-                long rows = 5000;//pages.getRowCount();
+                long rows = 5000000;//pages.getRowCount();
                 RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
                 final SpinLock lock = new SpinLock();
-
-                int tailleEchantillon = 20000;
-                if( rows > tailleEchantillon) {
-                    List<Set<Object>> echantillon = new ArrayList<>(table.getColumns().size());
-                    for (Column column : table.getColumns()) {
-                        echantillon.add(new HashSet<>());
-                    }
-                    for (int i = 0; i < tailleEchantillon; i++) {
-                        List<Object> list = Utils.extractListFromGroup(recordReader.read(), table.getColumns());
-                        for (int j = 0; j < table.getColumns().size(); j++) {
-                            Object obj = list.get(j);
-                            if (obj != null)
-                                echantillon.get(j).add(list.get(j));
-                        }
-                    }
-                    List<Integer> cardinalite = echantillon.stream().map(Set::size).collect(Collectors.toList());
-                    table.createIndexColumn(cardinalite, tailleEchantillon);
-                }
 
                 //ExecutorService executorService = Executors.newFixedThreadPool(2);
 

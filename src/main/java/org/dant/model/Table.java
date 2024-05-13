@@ -46,9 +46,18 @@ public class Table {
     }
 
     public void addAllRows(List<List<Object>> rows) {
+        if(this.rows.isEmpty()) {
+            createIndexedColumns(rows);
+        }
+
         lockAdd.lock();
         try {
-            this.rows.addAll(rows);
+            List<List<Object>> tmp = new ArrayList<>(this.rows.size()+rows.size());
+            tmp.addAll(this.rows);
+            this.rows = tmp;
+            for(List<Object> row : rows) {
+                addRow(row);
+            }
         } finally {
             lockAdd.unlock();
         }
@@ -146,19 +155,6 @@ public class Table {
         return true;
     }
 
-    public int getIndexOfColumnByCondition (Condition condition, List<Column> columns) {
-        for (Column column : columns) {
-            if (condition.getNameColumn().equals(column.getName())) {
-                return columns.indexOf(column);
-            }
-        }
-        return -1;
-    }
-
-    public List<Integer> getIndexOfColumnsByConditions(List<Condition> conditions, List<Column> colonnes) {
-        return conditions.stream().map( condition -> getIndexOfColumnByCondition(condition,colonnes) ).toList();
-    }
-
     public boolean validate(List<Object> list, List<Condition> conditions, List<Integer> idx, List<String> type) {
         for(int i=0; i<conditions.size(); i++) {
             if (!conditions.get(i).checkCondition(list, idx.get(i), type.get(i)))
@@ -180,14 +176,14 @@ public class Table {
         if ( !(conditions == null || conditions.isEmpty())) {
             List<Condition> conditionsOnIndexedColumn = conditions.stream().filter( condition -> isConditionOnIndexedColumn(condition,columnList)).collect(Collectors.toList());
             if( !conditionsOnIndexedColumn.isEmpty() ) {
-                int idxColumn = getIndexOfColumnByCondition(conditionsOnIndexedColumn.get(0),columnList);
+                int idxColumn = Utils.getIndexOfColumnByCondition(conditionsOnIndexedColumn.get(0),columnList);
                 TIntArrayList idxRows = new TIntArrayList();
                 TIntArrayList listOfIndex = columnList.get( idxColumn ).getIndex().getIndexsFromValue(Utils.cast(conditionsOnIndexedColumn.get(0).getValue(),columnList.get(idxColumn).getType()));
                 if(listOfIndex != null) {
                     idxRows = listOfIndex;
                 }
                 for(int i=1; i<conditionsOnIndexedColumn.size(); i++) {
-                    int indexOfColumn = getIndexOfColumnByCondition(conditionsOnIndexedColumn.get(i), columnList);
+                    int indexOfColumn = Utils.getIndexOfColumnByCondition(conditionsOnIndexedColumn.get(i), columnList);
                     listOfIndex = columnList.get(indexOfColumn).getIndex().getIndexsFromValue(conditionsOnIndexedColumn.get(i).getValue());
                     if(listOfIndex != null) {
                         idxRows = Utils.intersectionSortedList(idxRows,listOfIndex);
@@ -204,7 +200,7 @@ public class Table {
                 conditions.removeAll(conditionsOnIndexedColumn);
             }
             if( !conditions.isEmpty()) {
-                List<Integer> idx = getIndexOfColumnsByConditions(conditions, columnList);
+                List<Integer> idx = Utils.getIndexOfColumnsByConditions(conditions, columnList);
                 List<String> type = idx.stream().map(indice -> columnList.get(indice).getType()).toList();
                 res = res.parallelStream().filter(list -> validate(list, conditions, idx, type))
                         .collect(Collectors.toList());
@@ -214,7 +210,6 @@ public class Table {
         if (selectMethod.getGROUPBY() != null && selectMethod.getAGGREGAT() != null && !selectMethod.getAGGREGAT().isEmpty()) {
             int idxOfColumnGroupBy = Utils.getIdxColumnByName(columnList, selectMethod.getGROUPBY());
 
-            // appliquer le groupBy pour tout mettre dans une Map (chaque valeur associé aux lignes de la table qui lui correspondent)
             Map<Object, List<List<Object>>> groupBy = new HashMap<>();
             res.forEach(list -> {
                 Object object = list.get(idxOfColumnGroupBy);
@@ -237,12 +232,27 @@ public class Table {
         return res;
     }
 
-    public void createIndexColumn(List<Integer> cardinalite, int tailleEchantillon) {
-        for(int i=0; i<cardinalite.size(); i++) {
-            if(cardinalite.get(i) < tailleEchantillon*0.1) {
-                columns.get(i).setIsIndex(true);
-                columns.get(i).setIndex(new HashMapIndex());
-                indexedColumns.add(columns.get(i));
+    public void createIndexedColumns(List<List<Object>> rows) {
+        int tailleEchantillon = 20000;
+        if (rows.size() > tailleEchantillon) {
+            List<Set<Object>> echantillon = new ArrayList<>(this.columns.size());
+            for (Column column : this.columns) {
+                echantillon.add(new HashSet<>());
+            }
+            for (List<Object> list : rows.subList(0,tailleEchantillon)) {
+                for (int j = 0; j < columns.size(); j++) {
+                    Object obj = list.get(j);
+                    if (obj != null)
+                        echantillon.get(j).add(list.get(j));
+                }
+            }
+            List<Integer> cardinalite = echantillon.stream().map(Set::size).collect(Collectors.toList());
+            for(int i=0; i<cardinalite.size(); i++) {
+                if(cardinalite.get(i) < tailleEchantillon*0.1) {
+                    columns.get(i).setIsIndex(true);
+                    columns.get(i).setIndex(new HashMapIndex());
+                    indexedColumns.add(columns.get(i));
+                }
             }
         }
     }
