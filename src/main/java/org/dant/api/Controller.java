@@ -114,11 +114,8 @@ public class Controller {
                     for(long row=0; row<rows/2 ;row++) {
                         lock.lock();
                         Group group;
-                        try {
-                            group = recordReader.read();
-                        } finally {
-                            lock.unlock();
-                        }
+                        group = recordReader.read();
+                        lock.unlock();
                         listOfList.add(Utils.extractListFromGroup(group, table.getColumns()));
                         if( listOfList.size() == 500000) {
                             Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
@@ -130,14 +127,11 @@ public class Controller {
                     return "fini";
                 });*/
                 List<List<Object>> listOfList = new ArrayList<>((int)rows);
+                Group group;
                 for(long row=0; row<rows;row++) {
                     lock.lock();
-                    Group group;
-                    try {
-                        group = recordReader.read();
-                    } finally {
-                        lock.unlock();
-                    }
+                    group = recordReader.read();
+                    lock.unlock();
                     listOfList.add(Utils.extractListFromGroup(group, table.getColumns()));
                 }
                 table.addAllRows(listOfList);

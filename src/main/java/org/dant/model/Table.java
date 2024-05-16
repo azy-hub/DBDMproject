@@ -41,7 +41,10 @@ public class Table {
         int idxRow = rows.size();
         rows.add(row);
         for(Column column : indexedColumns) {
-            column.getIndex().addIndex(row.get(columns.indexOf(column)),idxRow);
+            Object object = row.get(columns.indexOf(column));
+            if(object != null) {
+                column.getIndex().addIndex(object, idxRow);
+            }
         }
     }
 
@@ -49,7 +52,6 @@ public class Table {
         if(this.rows.isEmpty()) {
             createIndexedColumns(rows);
         }
-
         lockAdd.lock();
         try {
             List<List<Object>> tmp = new ArrayList<>(this.rows.size()+rows.size());
@@ -140,8 +142,8 @@ public class Table {
     }
 
     public boolean checkSelectMethod(SelectMethod selectMethod) {
-        if ( !((selectMethod.getWHERE() == null) || selectMethod.getWHERE().stream().allMatch(this::checkCondition)))
-            return false;
+        //if ( !((selectMethod.getWHERE() == null) || selectMethod.getWHERE().stream().allMatch(this::checkCondition)))
+        //    return false;
         if ( getColumnsByNames(selectMethod.getSELECT()).isEmpty() )
             return false;
         if ( selectMethod.getGROUPBY() != null && selectMethod.getGROUPBY().isEmpty() ) {
@@ -168,54 +170,87 @@ public class Table {
     }
 
     public List<List<Object>> select(SelectMethod selectMethod) {
+        // Récupérer la liste des colonnes qu'on séléctionne
         List<Column> columnList = getColumnsByNames(selectMethod.getSELECT());
+
+        // Récupérer de la base de données toutes les lignes avec seulement les colonnes souhaitées
         List<List<Object>> res = getRows().parallelStream()
                 .map( row -> transform(row,columnList) )
-                .collect(Collectors.toList());;
+                .collect(Collectors.toList());
+
+        // Récupère les conditions qui ont été soumise dans le WHERE
         List<Condition> conditions = selectMethod.getWHERE();
-        if ( !(conditions == null || conditions.isEmpty())) {
-            List<Condition> conditionsOnIndexedColumn = conditions.stream().filter( condition -> isConditionOnIndexedColumn(condition,columnList)).collect(Collectors.toList());
-            if( !conditionsOnIndexedColumn.isEmpty() ) {
-                int idxColumn = Utils.getIndexOfColumnByCondition(conditionsOnIndexedColumn.get(0),columnList);
+
+        // Teste si y a des conditions à appliquer pour filtrer :
+        if ( !(conditions == null || conditions.isEmpty()) ) {
+
+            // Vérifie d'abord si les conditions sont sur des colonnes indéxé et que la conditon est bien "="
+            List<Condition> conditionsOnIndexedColumn = conditions.stream().filter(condition -> isConditionOnIndexedColumn(condition, columnList)).collect(Collectors.toList());
+
+            if (!conditionsOnIndexedColumn.isEmpty()) { // Si y a des conditions sur des colonnes indéxées alors utilisent directement l'index pour récuperer les index des lignes qui correspondent
+
+                // Récupérer les index de la première condition sur une colonne indéxé
+                int idxColumn = Utils.getIndexOfColumnByCondition(conditionsOnIndexedColumn.get(0), columnList);
                 TIntArrayList idxRows = new TIntArrayList();
-                TIntArrayList listOfIndex = columnList.get( idxColumn ).getIndex().getIndexsFromValue(Utils.cast(conditionsOnIndexedColumn.get(0).getValue(),columnList.get(idxColumn).getType()));
-                if(listOfIndex != null) {
+                TIntArrayList listOfIndex = columnList.get(idxColumn).getIndex().getIndexsFromValue(Utils.cast(conditionsOnIndexedColumn.get(0).getValue(), columnList.get(idxColumn).getType()));
+                if (listOfIndex != null) {
                     idxRows = listOfIndex;
                 }
-                for(int i=1; i<conditionsOnIndexedColumn.size(); i++) {
+
+                // Parcours les autres conditions indéxés (si y en a) et
+                // Récupère leurs index pour faire l'intersection des index de chaque résultat
+                for (int i = 1; i < conditionsOnIndexedColumn.size(); i++) {
                     int indexOfColumn = Utils.getIndexOfColumnByCondition(conditionsOnIndexedColumn.get(i), columnList);
                     listOfIndex = columnList.get(indexOfColumn).getIndex().getIndexsFromValue(conditionsOnIndexedColumn.get(i).getValue());
-                    if(listOfIndex != null) {
-                        idxRows = Utils.intersectionSortedList(idxRows,listOfIndex);
+                    if (listOfIndex != null) {
+                        idxRows = Utils.intersectionSortedList(idxRows, listOfIndex);
                     } else {
                         idxRows = new TIntArrayList();
                         break;
                     }
                 }
+
+                // Va récupérer les lignes qui correspondent à l'intersection de tous les index
                 List<List<Object>> resultat = new ArrayList<>(idxRows.size());
-                for(int idx=0; idx<idxRows.size(); idx++) {
-                    resultat.add( res.get(idxRows.get(idx)) );
+                for (int idx = 0; idx < idxRows.size(); idx++) {
+                    resultat.add(res.get(idxRows.get(idx)));
                 }
                 res = resultat;
+                // Supprime les conditions qui ont déja été appliqué sur la liste de toutes nos conditions à appliquer
                 conditions.removeAll(conditionsOnIndexedColumn);
-            }
-            if( !conditions.isEmpty()) {
-                List<Integer> idx = Utils.getIndexOfColumnsByConditions(conditions, columnList);
-                List<String> type = idx.stream().map(indice -> columnList.get(indice).getType()).toList();
-                res = res.parallelStream().filter(list -> validate(list, conditions, idx, type))
-                        .collect(Collectors.toList());
             }
         }
 
+        // Décompresse toutes les lignes en bytes vers de la VRAI DONNÉE
+        res = res.parallelStream().map( list -> {
+            List<Object> objectList = new ArrayList<>(list.size());
+            for(int idx=0; idx<columnList.size(); idx++)
+                objectList.add( columnList.get(idx).fromBytesToObject.apply(list.get(idx)) );
+            return objectList;
+        }).collect(Collectors.toList());
+
+        // Vérifie si y a des conditions à traiter pour filtrer encore sur les lignes
+        if ( !(conditions == null || conditions.isEmpty()) ) {
+            List<Integer> idx = Utils.getIndexOfColumnsByConditions(conditions, columnList);
+            List<String> type = idx.stream().map(indice -> columnList.get(indice).getType()).toList();
+            res = res.parallelStream().filter(list -> validate(list, conditions, idx, type))
+                    .collect(Collectors.toList());
+        }
+
+
+        // Vérifie si un groupBy et un aggrégat ont été demandé dans la requete SELECT
         if (selectMethod.getGROUPBY() != null && selectMethod.getAGGREGAT() != null && !selectMethod.getAGGREGAT().isEmpty()) {
-            int idxOfColumnGroupBy = Utils.getIdxColumnByName(columnList, selectMethod.getGROUPBY());
+            int idxOfColumnGroupBy = Utils.getIdxColumnByName(columnList, selectMethod.getGROUPBY()); // Trouve l'index de la colonne à regrouper parmis les colonnes selectionnées
 
             Map<Object, List<List<Object>>> groupBy = new HashMap<>();
+            // TODO : Ajouter la récupération par l'index si le groupBy a été fait par une colonne indexé
+            // Parcours chaque ligne et regroupe chaque valeur avec les lignes qui lui correspondent
             res.forEach(list -> {
                 Object object = list.get(idxOfColumnGroupBy);
                 groupBy.computeIfAbsent(object, k -> new ArrayList<>()).add(list);
             });
 
+            // Parcours la map générer grace au regroupement et applique les aggrégats demandés
             List<List<Object>> resultat = new ArrayList<>(groupBy.keySet().size());
             groupBy.forEach( (obj,list) -> {
                 List<Object> tmp = new ArrayList<>(1+selectMethod.getAGGREGAT().size());
@@ -246,7 +281,7 @@ public class Table {
                         echantillon.get(j).add(list.get(j));
                 }
             }
-            List<Integer> cardinalite = echantillon.stream().map(Set::size).collect(Collectors.toList());
+            List<Integer> cardinalite = echantillon.stream().map(Set::size).toList();
             for(int i=0; i<cardinalite.size(); i++) {
                 if(cardinalite.get(i) < tailleEchantillon*0.1) {
                     columns.get(i).setIsIndex(true);

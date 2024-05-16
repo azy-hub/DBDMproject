@@ -4,6 +4,7 @@ import org.apache.parquet.example.data.Group;
 import org.dant.commons.TypeDB;
 import org.dant.index.Index;
 
+import java.nio.charset.StandardCharsets;
 import java.util.function.Function;
 
 
@@ -12,6 +13,7 @@ public class Column {
     private String name;
     private String type;
     public Function<Group,Object> extractFromGroup;
+    public Function<Object,Object> fromBytesToObject;
     private boolean isIndex;
     private Index index;
 
@@ -31,13 +33,15 @@ public class Column {
                         return group.getDouble(this.name,0);
                     return null;
                 };
+                this.fromBytesToObject = bytes -> bytes != null ? Double.parseDouble(new String((byte[]) bytes,StandardCharsets.UTF_8)) : null;
                 break;
             case TypeDB.STRING:
                 this.extractFromGroup = (group) -> {
                     if (group.getFieldRepetitionCount(this.name) != 0)
-                        return group.getString(this.name,0);
+                        return group.getString(this.name,0).getBytes(StandardCharsets.UTF_8);
                     return null;
                 };
+                this.fromBytesToObject = bytes -> bytes != null ? new String((byte[]) bytes,StandardCharsets.UTF_8) : null;
                 break;
             case TypeDB.LONG:
                 this.extractFromGroup = (group) -> {
@@ -45,6 +49,7 @@ public class Column {
                         return group.getLong(this.name,0);
                     return null;
                 };
+                this.fromBytesToObject = bytes -> bytes != null ? Long.parseLong(new String((byte[]) bytes,StandardCharsets.UTF_8)) : null;
                 break;
             case TypeDB.INT:
                 this.extractFromGroup = (group) -> {
@@ -52,6 +57,7 @@ public class Column {
                         return group.getInteger(this.name,0);
                     return null;
                 };
+                this.fromBytesToObject = bytes -> bytes != null ? Integer.parseInt(new String((byte[]) bytes,StandardCharsets.UTF_8)) : null;
                 break;
             case TypeDB.BYTE:
                 this.extractFromGroup = (group) -> {
@@ -59,6 +65,7 @@ public class Column {
                         return (byte) group.getInteger(this.name, 0);
                     return null;
                 };
+                this.fromBytesToObject = bytes -> bytes != null ? Byte.parseByte(new String((byte[]) bytes,StandardCharsets.UTF_8)) : null;
                 break;
             default:
                 break;

@@ -14,8 +14,8 @@ public class Utils {
 
     public static List<Object> extractListFromGroup(Group group, List<Column> columns) {
         List<Object> list = new ArrayList<>(columns.size());
-        for (Column column : columns) {
-           list.add(column.extractFromGroup.apply(group));
+        for (int i=0; i<columns.size(); i++) {
+           list.add((group.getFieldRepetitionCount(i) != 0) ? group.getValueToString(i,0).getBytes() : null);
         }
         return list;
     }
