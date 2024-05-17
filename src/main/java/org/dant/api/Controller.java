@@ -28,6 +28,10 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 @Path("/v1")
@@ -89,11 +93,11 @@ public class Controller {
             PageReadStore pages;
 
             while ((pages = parquetFileReader.readNextRowGroup()) != null) {
-                long rows = 5000000;//pages.getRowCount();
+                long rows = pages.getRowCount();
                 RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
                 final SpinLock lock = new SpinLock();
 
-                //ExecutorService executorService = Executors.newFixedThreadPool(2);
+                //ExecutorService executorService = Executors.newFixedThreadPool(3);
 
                 /*executorService.execute( () -> {
                     List<List<Object>> listOfList = new LinkedList<>();
@@ -129,15 +133,11 @@ public class Controller {
                         Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
                     return "fini";
                 });*/
-                List<List<Object>> listOfList = new ArrayList<>((int)rows);
-                for(long row=0; row<rows;row++) {
-                    lock.lock();
+                List<List<Object>> listOfList = new ArrayList<>((int) rows);
+                SpinLock lockList = new SpinLock();
+                for (long row = 0; row < rows; row++) {
                     Group group;
-                    try {
-                        group = recordReader.read();
-                    } finally {
-                        lock.unlock();
-                    }
+                    group = recordReader.read();
                     listOfList.add(Utils.extractListFromGroup(group, table.getColumns()));
                 }
                 table.addAllRows(listOfList);
