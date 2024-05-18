@@ -4,6 +4,7 @@ import gnu.trove.TIntArrayList;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 public class HashMapIndex implements Index {
 
@@ -33,6 +34,11 @@ public class HashMapIndex implements Index {
     @Override
     public void addIndex(Object object, int index) {
         this.index.computeIfAbsent(object, k -> new TIntArrayList()).add(index);
+    }
+
+    @Override
+    public Set<Object> getValues() {
+        return this.index.keySet();
     }
 
 }

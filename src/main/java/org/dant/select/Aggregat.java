@@ -11,11 +11,14 @@ public class Aggregat {
 
     private String typeAggregat;
 
+    private Condition HAVING;
+
     public Aggregat() {}
 
-    public Aggregat(String nameColumn, String typeAggregat) {
+    public Aggregat(String nameColumn, String typeAggregat, Condition HAVING) {
         this.nameColumn = nameColumn;
         this.typeAggregat = typeAggregat;
+        this.HAVING = HAVING;
     }
 
     public String getNameColumn() {
@@ -34,8 +37,15 @@ public class Aggregat {
         this.typeAggregat = typeAggregat;
     }
 
+    public Condition getHAVING() {
+        return HAVING;
+    }
+
+    public void setHAVING(Condition HAVING) {
+        this.HAVING = HAVING;
+    }
+
     public Object applyAggregat(List<List<Object>> listOfList, int index, String typeColumn) {
-        List<Object> tmp = new ArrayList<>(listOfList.size());
         if (typeAggregat.equals("SUM")) {
             switch (typeColumn) {
                 case TypeDB.INT, TypeDB.SHORT,TypeDB.BYTE:
@@ -49,7 +59,10 @@ public class Aggregat {
             }
         }
         if (typeAggregat.equals("COUNT")) {
-            return listOfList.size();
+            if (!nameColumn.equals("*"))
+                return listOfList.parallelStream().filter( list -> list.get(index) != null).toList().size();
+            else
+                return listOfList.size();
         }
         if (typeAggregat.equals("MAX")) {
             switch (typeColumn) {

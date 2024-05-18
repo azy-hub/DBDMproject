@@ -93,7 +93,7 @@ public class Controller {
             PageReadStore pages;
 
             while ((pages = parquetFileReader.readNextRowGroup()) != null) {
-                long rows = pages.getRowCount();
+                long rows = 500;//pages.getRowCount();
                 RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
                 final SpinLock lock = new SpinLock();
 
@@ -217,32 +217,69 @@ public class Controller {
         }
         executorService.shutdown();*/
 
-        if (selectMethod.getGROUPBY() != null && selectMethod.getAGGREGAT() != null && !selectMethod.getAGGREGAT().isEmpty()) {
-            int idxOfColumnGroupBy = 0;
-            // appliquer le groupBy pour tout mettre dans une Map (chaque valeur associé aux lignes de la table qui lui correspondent)
-            Map<Object, List<List<Object>>> groupBy = new HashMap<>();
-            res.forEach(list -> {
-                Object object = list.get(0);
-                groupBy.computeIfAbsent(object, k -> new ArrayList<>()).add(list);
-            });
+        if (selectMethod.getAGGREGAT() != null && !selectMethod.getAGGREGAT().isEmpty()) {
 
-            List<List<Object>> resultat = new ArrayList<>(groupBy.keySet().size());
-            groupBy.forEach( (obj,list) -> {
-                List<Object> tmp = new ArrayList<>(1+selectMethod.getAGGREGAT().size());
-                tmp.add(obj);
-                for(int idxOfAggregat=0; idxOfAggregat<selectMethod.getAGGREGAT().size(); idxOfAggregat++) {
+            if (selectMethod.getGROUPBY() != null) {
+                // appliquer le groupBy pour tout mettre dans une Map (chaque valeur associé aux lignes de la table qui lui correspondent)
+                Map<Object, List<List<Object>>> groupBy = new HashMap<>();
+                res.forEach(list -> {
+                    Object object = list.get(0);
+                    groupBy.computeIfAbsent(object, k -> new ArrayList<>()).add(list);
+                });
+
+                List<List<Object>> resultat = new ArrayList<>(groupBy.keySet().size());
+                groupBy.forEach((obj, list) -> {
+                    List<Object> tmp = new ArrayList<>(1 + selectMethod.getAGGREGAT().size());
+                    tmp.add(obj);
+                    boolean havingBool = true;
+                    for (int idxOfAggregat = 0; idxOfAggregat < selectMethod.getAGGREGAT().size(); idxOfAggregat++) {
+                        Aggregat aggregat = selectMethod.getAGGREGAT().get(idxOfAggregat);
+                        if (aggregat.getTypeAggregat().equals("COUNT")) {
+                            aggregat.setTypeAggregat("SUM");
+                            tmp.add(aggregat.applyAggregat(list, idxOfAggregat + 1, TypeDB.INT));
+                            aggregat.setTypeAggregat("COUNT");
+                            if (aggregat.getHAVING() != null && !aggregat.getHAVING().checkCondition(tmp, idxOfAggregat + 1, TypeDB.INT)) {
+                                havingBool = false;
+                                break;
+                            }
+                        } else {
+                            tmp.add(aggregat.applyAggregat(list, idxOfAggregat + 1, table.getColumnByName(aggregat.getNameColumn()).getType()));
+                            if (aggregat.getHAVING() != null && !aggregat.getHAVING().checkCondition(tmp, idxOfAggregat + 1, table.getColumnByName(aggregat.getNameColumn()).getType())) {
+                                havingBool = false;
+                                break;
+                            }
+                        }
+                    }
+                    if (havingBool)
+                        resultat.add(tmp);
+                });
+                res = resultat;
+            } else {
+                List<List<Object>> resTmp = new ArrayList<>();
+                List<Object> tmp = new ArrayList<>(selectMethod.getAGGREGAT().size());
+                boolean havingBool = true;
+                for (int idxOfAggregat = 0; idxOfAggregat < selectMethod.getAGGREGAT().size(); idxOfAggregat++) {
                     Aggregat aggregat = selectMethod.getAGGREGAT().get(idxOfAggregat);
-                    if( aggregat.getTypeAggregat().equals("COUNT") ) {
+                    if (aggregat.getTypeAggregat().equals("COUNT")) {
                         aggregat.setTypeAggregat("SUM");
-                        tmp.add(aggregat.applyAggregat(list, idxOfAggregat+1, TypeDB.INT));
+                        tmp.add(aggregat.applyAggregat(res, idxOfAggregat, TypeDB.INT));
                         aggregat.setTypeAggregat("COUNT");
+                        if (aggregat.getHAVING() != null && !aggregat.getHAVING().checkCondition(tmp, idxOfAggregat, TypeDB.INT)) {
+                            havingBool = false;
+                            break;
+                        }
                     } else {
-                        tmp.add(aggregat.applyAggregat(list, idxOfAggregat+1, table.getColumnByName(aggregat.getNameColumn()).getType()));
+                        tmp.add(aggregat.applyAggregat(res, idxOfAggregat, table.getColumnByName(aggregat.getNameColumn()).getType()));
+                        if (aggregat.getHAVING() != null && !aggregat.getHAVING().checkCondition(tmp, idxOfAggregat, table.getColumnByName(aggregat.getNameColumn()).getType())) {
+                            havingBool = false;
+                            break;
+                        }
                     }
                 }
-                resultat.add(tmp);
-            });
-            res = resultat;
+                if (havingBool)
+                    resTmp.add(tmp);
+                res =resTmp;
+            }
         }
 
         System.out.println(res.size());
