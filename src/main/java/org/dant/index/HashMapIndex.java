@@ -37,7 +37,7 @@ public class HashMapIndex implements Index {
     }
 
     @Override
-    public Set<Object> getValues() {
+    public Set<Object> getKeys() {
         return this.index.keySet();
     }
 

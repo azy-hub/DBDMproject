@@ -93,7 +93,7 @@ public class Controller {
             PageReadStore pages;
 
             while ((pages = parquetFileReader.readNextRowGroup()) != null) {
-                long rows = 500;//pages.getRowCount();
+                long rows = pages.getRowCount();
                 RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
                 final SpinLock lock = new SpinLock();
 
@@ -135,8 +135,8 @@ public class Controller {
                 });*/
                 List<List<Object>> listOfList = new ArrayList<>((int) rows);
                 SpinLock lockList = new SpinLock();
+                Group group;
                 for (long row = 0; row < rows; row++) {
-                    Group group;
                     group = recordReader.read();
                     listOfList.add(Utils.extractListFromGroup(group, table.getColumns()));
                 }
@@ -278,7 +278,7 @@ public class Controller {
                 }
                 if (havingBool)
                     resTmp.add(tmp);
-                res =resTmp;
+                res = resTmp;
             }
         }
 

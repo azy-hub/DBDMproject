@@ -50,16 +50,11 @@ public class Table {
             createIndexedColumns(rows);
         }
 
-        lockAdd.lock();
-        try {
-            List<List<Object>> tmp = new ArrayList<>(this.rows.size()+rows.size());
-            tmp.addAll(this.rows);
-            this.rows = tmp;
-            for(List<Object> row : rows) {
-                addRow(row);
-            }
-        } finally {
-            lockAdd.unlock();
+        List<List<Object>> tmp = new ArrayList<>(this.rows.size()+rows.size());
+        tmp.addAll(this.rows);
+        this.rows = tmp;
+        for(List<Object> row : rows) {
+            addRow(row);
         }
     }
 
@@ -174,6 +169,7 @@ public class Table {
 
         // Récupère les conditions qui ont été soumise dans le WHERE
         List<Condition> conditions = selectMethod.getWHERE();
+        int nbConditions = (conditions != null) ? conditions.size() : 0;
 
         if (conditions!= null && !conditions.isEmpty()) {
             // Filtre par les conditions qui sont sur des colonnes indéxé
@@ -189,21 +185,26 @@ public class Table {
         if ( selectMethod.getAGGREGAT() != null && !selectMethod.getAGGREGAT().isEmpty()) {
             if ( selectMethod.getGROUPBY() != null && !selectMethod.getGROUPBY().isEmpty()) {
                 int idxOfColumnGroupBy = Utils.getIdxColumnByName(columns, selectMethod.getGROUPBY()); // Trouve l'index de la colonne à regrouper parmis les colonnes selectionnées
+                // si le groupBy est appliqué sur un index et que aucune condition de filtre n'a été appliqué alors on peut directement récupérer les valeurs du groupBy par l'index
+                if ( columnList.get(idxOfColumnGroupBy).isIndex() && nbConditions == 0) {
 
-                Map<Object, List<List<Object>>> groupBy = new HashMap<>();
-                // si le groupBy est appliqué sur un index et que aucune condition de filtre n'a été appliqué alors on peut directement récupérer les valeurs du groupBy
-                if (columnList.get(idxOfColumnGroupBy).isIndex() && (selectMethod.getWHERE() == null || selectMethod.getWHERE().isEmpty())) {
-                    System.out.println("Group by index");
-                    columnList.get(idxOfColumnGroupBy).getIndex().getValues().parallelStream().forEach(key -> {
+                    List<List<Object>> groupby = new ArrayList<>( columnList.get(idxOfColumnGroupBy).getIndex().getKeys().size() );
+                    columnList.get(idxOfColumnGroupBy).getIndex().getKeys().parallelStream().forEach(key -> {
                         TIntArrayList idxRows = columnList.get(idxOfColumnGroupBy).getIndex().getIndexsFromValue(key);
                         List<List<Object>> resultat = new ArrayList<>(idxRows.size());
                         for (int idx = 0; idx < idxRows.size(); idx++) {
                             resultat.add(getRows().get(idxRows.get(idx)));
                         }
-                        groupBy.put(key, resultat);
+                        List<Object> tmp = selectMethod.applyAllAggregats(columns, resultat);
+                        tmp.add(0, key);
+                        groupby.add(tmp);
                     });
-                } else {
+                    res = groupby;
+
+                }
+                else {
                     System.out.println("group by sans index");
+                    Map<Object, List<List<Object>>> groupBy = new HashMap<>();
                     // Parcours chaque ligne et regroupe chaque valeur avec les lignes qui lui correspondent
                     SpinLock groupByLock = new SpinLock();
                     res.parallelStream().forEach(list -> {
@@ -212,36 +213,20 @@ public class Table {
                         groupBy.computeIfAbsent(object, k -> new ArrayList<>()).add(list);
                         groupByLock.unlock();
                     });
-                }
 
-                // Parcours la map générer grace au regroupement et applique les aggrégats demandés
-                List<List<Object>> resultat = new ArrayList<>(groupBy.keySet().size());
-                groupBy.forEach((obj, list) -> {
-                    List<Object> tmp = new ArrayList<>(1 + selectMethod.getAGGREGAT().size());
-                    tmp.add(obj);
-                    selectMethod.getAGGREGAT().parallelStream().forEach( aggregat ->  {
-                        if( aggregat.getTypeAggregat().equals("COUNT") && aggregat.getNameColumn().equals("*")) {
-                            tmp.add(aggregat.applyAggregat(list, -1, null));
-                        } else {
-                            int idxOfAggregat = Utils.getIdxColumnByName(columns, aggregat.getNameColumn());
-                            tmp.add(aggregat.applyAggregat(list, idxOfAggregat, columns.get(idxOfAggregat).getType()));
-                        }
+                    // Parcours la map générer grace au regroupement et applique les aggrégats demandés
+                    List<List<Object>> resultat = Collections.synchronizedList(new LinkedList<>());
+                    groupBy.keySet().parallelStream().forEach( obj -> {
+                        List<Object> tmp = selectMethod.applyAllAggregats(columns, groupBy.get(obj));
+                        tmp.add(0, obj);
+                        resultat.add( tmp );
                     });
-                    resultat.add(tmp);
-                });
-                res = resultat;
+                    res = resultat;
+
+                }
             } else {
                 List<List<Object>> resultat = new ArrayList<>();
-                List<Object> tmp = new ArrayList<>(selectMethod.getAGGREGAT().size());
-                for (Aggregat aggregat : selectMethod.getAGGREGAT()) {
-                    if( aggregat.getTypeAggregat().equals("COUNT") && aggregat.getNameColumn().equals("*")) {
-                        tmp.add(aggregat.applyAggregat(res, -1, null));
-                    } else {
-                        int idxOfAggregat = Utils.getIdxColumnByName(columns, aggregat.getNameColumn());
-                        tmp.add(aggregat.applyAggregat(res, idxOfAggregat, columns.get(idxOfAggregat).getType()));
-                    }
-                }
-                resultat.add(tmp);
+                resultat.add( selectMethod.applyAllAggregats(columns, res) );
                 res = resultat;
             }
         } else {

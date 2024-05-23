@@ -11,6 +11,6 @@ public interface Index {
 
     public void addIndex(Object object, int index);
 
-    public Set<Object> getValues();
+    public Set<Object> getKeys();
 
 }
