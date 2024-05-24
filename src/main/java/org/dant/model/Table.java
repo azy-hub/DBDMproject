@@ -4,8 +4,7 @@ import gnu.trove.TIntArrayList;
 import org.dant.commons.Utils;
 import org.dant.commons.SpinLock;
 import org.dant.commons.TypeDB;
-import org.dant.index.HashMapIndex;
-import org.dant.select.Aggregat;
+import org.dant.index.IndexFactory;
 import org.dant.select.Condition;
 import org.dant.select.SelectMethod;
 
@@ -38,23 +37,38 @@ public class Table {
     }
 
     public void addRow(List<Object> row) {
-        int idxRow = rows.size();
         rows.add(row);
-        for(Column column : indexedColumns) {
-            column.getIndex().addIndex(row.get(columns.indexOf(column)),idxRow);
-        }
     }
 
-    public void addAllRows(List<List<Object>> rows) {
+    public void addAllRows(List<List<Object>> lignes) {
         if(this.rows.isEmpty()) {
-            createIndexedColumns(rows);
+            createIndexedColumns(lignes);
         }
-
-        List<List<Object>> tmp = new ArrayList<>(this.rows.size()+rows.size());
-        tmp.addAll(this.rows);
-        this.rows = tmp;
-        for(List<Object> row : rows) {
-            addRow(row);
+        int nbThread = 4;
+        final int[] rowsIdx = {rows.size()};
+        List<Thread> threadList = new ArrayList<>(nbThread);
+        for(int i = 0; i<nbThread; i++) {
+            int finalI = i;
+            Runnable runnable = () -> {
+                int index = rowsIdx[0];
+                for(List<Object> row : lignes) {
+                    for(int idx=finalI*(indexedColumns.size()); idx<(finalI+1)*(indexedColumns.size()/nbThread); idx++) {
+                        indexedColumns.get(idx).getIndex().addIndex(row.get(columns.indexOf(indexedColumns.get(idx))), index );
+                    }
+                    index++;
+                }
+            };
+            Thread thread = new Thread(runnable);
+            threadList.add(thread);
+            thread.start();
+        }
+        rows.addAll(lignes);
+        for(Thread thread : threadList) {
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 
@@ -190,7 +204,7 @@ public class Table {
 
                     List<List<Object>> groupby = new ArrayList<>( columnList.get(idxOfColumnGroupBy).getIndex().getKeys().size() );
                     columnList.get(idxOfColumnGroupBy).getIndex().getKeys().parallelStream().forEach(key -> {
-                        TIntArrayList idxRows = columnList.get(idxOfColumnGroupBy).getIndex().getIndexsFromValue(key);
+                        TIntArrayList idxRows = columnList.get(idxOfColumnGroupBy).getIndex().getIndexFromValue(key);
                         List<List<Object>> resultat = new ArrayList<>(idxRows.size());
                         for (int idx = 0; idx < idxRows.size(); idx++) {
                             resultat.add(getRows().get(idxRows.get(idx)));
@@ -258,7 +272,7 @@ public class Table {
             // Récupérer les index de la première condition sur une colonne indéxé
             int idxColumn = Utils.getIndexOfColumnByCondition(conditionsOnIndexedColumn.get(0), columnList);
             TIntArrayList idxRows = new TIntArrayList();
-            TIntArrayList listOfIndex = columnList.get(idxColumn).getIndex().getIndexsFromValue(Utils.cast(conditionsOnIndexedColumn.get(0).getValue(), columnList.get(idxColumn).getType()));
+            TIntArrayList listOfIndex = columnList.get(idxColumn).getIndex().getIndexFromValue(Utils.cast(conditionsOnIndexedColumn.get(0).getValue(), columnList.get(idxColumn).getType()));
             if (listOfIndex != null) {
                 idxRows = listOfIndex;
             }
@@ -266,7 +280,7 @@ public class Table {
             // Récupère leurs index pour faire l'intersection des index de chaque résultat
             for (int i = 1; i < conditionsOnIndexedColumn.size(); i++) {
                 int indexOfColumn = Utils.getIndexOfColumnByCondition(conditionsOnIndexedColumn.get(i), columnList);
-                listOfIndex = columnList.get(indexOfColumn).getIndex().getIndexsFromValue(Utils.cast(conditionsOnIndexedColumn.get(i).getValue(), columnList.get(indexOfColumn).getType()));
+                listOfIndex = columnList.get(indexOfColumn).getIndex().getIndexFromValue(Utils.cast(conditionsOnIndexedColumn.get(i).getValue(), columnList.get(indexOfColumn).getType()));
                 if (listOfIndex != null) {
                     idxRows = Utils.intersectionSortedList(idxRows, listOfIndex);
                 } else {
@@ -304,7 +318,7 @@ public class Table {
             for(int i=0; i<cardinalite.size(); i++) {
                 if(cardinalite.get(i) < tailleEchantillon*0.1) {
                     columns.get(i).setIsIndex(true);
-                    columns.get(i).setIndex(new HashMapIndex());
+                    columns.get(i).setIndex(IndexFactory.create());
                     indexedColumns.add(columns.get(i));
                 }
             }

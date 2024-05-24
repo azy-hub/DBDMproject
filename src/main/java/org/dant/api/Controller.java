@@ -99,46 +99,26 @@ public class Controller {
 
                 //ExecutorService executorService = Executors.newFixedThreadPool(3);
 
-                /*executorService.execute( () -> {
-                    List<List<Object>> listOfList = new LinkedList<>();
-                    for(long row=0; row<rows/3; row++) {
-                        lock.lock();
-                        Group group;
-                        try {
-                            group = recordReader.read();
-                        } finally {
-                            lock.unlock();
-                        }
-                        listOfList.add(Utils.extractListFromGroup(group, table.getColumns()));
-                    }
-                    Forwarder.forwardRowsToTable(addressIp2,tableName,listOfList);
-                });
+                /*
                 Future<String> forwarder1 =  executorService.submit( () -> {
                     List<List<Object>> listOfList = new LinkedList<>();
-                    for(long row=0; row<rows/2 ;row++) {
-                        lock.lock();
-                        Group group;
-                        try {
-                            group = recordReader.read();
-                        } finally {
-                            lock.unlock();
-                        }
-                        listOfList.add(Utils.extractListFromGroup(group, table.getColumns()));
-                        if( listOfList.size() == 500000) {
-                            Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
-                            listOfList = new LinkedList<>();
-                        }
+                    for(long row=0; row<rows/3 ;row++) {
+                        listOfList.add(Utils.extractListFromGroup(recordReader.read(), table.getColumns()));
                     }
-                    if( !listOfList.isEmpty() )
-                        Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
+                    Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
+                    return "fini";
+                });
+                Future<String> forwarder2 =  executorService.submit( () -> {
+                    List<List<Object>> listOfList = new LinkedList<>();
+                    for(long row=0; row<rows/3 ;row++) {
+                        listOfList.add(Utils.extractListFromGroup(recordReader.read(), table.getColumns()));
+                    }
+                    Forwarder.forwardRowsToTable(addressIp2,tableName,listOfList);
                     return "fini";
                 });*/
                 List<List<Object>> listOfList = new ArrayList<>((int) rows);
-                SpinLock lockList = new SpinLock();
-                Group group;
                 for (long row = 0; row < rows; row++) {
-                    group = recordReader.read();
-                    listOfList.add(Utils.extractListFromGroup(group, table.getColumns()));
+                    listOfList.add(Utils.extractListFromGroup(recordReader.read(), table.getColumns()));
                 }
                 table.addAllRows(listOfList);
                 //executorService.shutdown();

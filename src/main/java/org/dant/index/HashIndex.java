@@ -6,18 +6,14 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
-public class HashMapIndex implements Index {
+public class HashIndex implements Index {
 
     private Map<Object, TIntArrayList> index;
 
-    public HashMapIndex() {
-        this.index = new HashMap<>();
+    public HashIndex() {
+        this.index = createMap();
     }
-
-    public HashMapIndex(Map<Object, TIntArrayList> index) {
-        this.index = index;
-    }
-
+    protected Map<Object,TIntArrayList> createMap() { return new HashMap<>(); }
     public Map<Object, TIntArrayList> getIndex() {
         return index;
     }
@@ -27,7 +23,7 @@ public class HashMapIndex implements Index {
     }
 
     @Override
-    public TIntArrayList getIndexsFromValue(Object object) {
+    public TIntArrayList getIndexFromValue(Object object) {
         return this.index.get(object);
     }
 
