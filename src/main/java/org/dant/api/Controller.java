@@ -99,46 +99,26 @@ public class Controller {
 
                 //ExecutorService executorService = Executors.newFixedThreadPool(3);
 
-                /*executorService.execute( () -> {
-                    List<List<Object>> listOfList = new LinkedList<>();
-                    for(long row=0; row<rows/3; row++) {
-                        lock.lock();
-                        Group group;
-                        try {
-                            group = recordReader.read();
-                        } finally {
-                            lock.unlock();
-                        }
-                        listOfList.add(Utils.extractListFromGroup(group, table.getColumns()));
-                    }
-                    Forwarder.forwardRowsToTable(addressIp2,tableName,listOfList);
-                });
+                /*
                 Future<String> forwarder1 =  executorService.submit( () -> {
                     List<List<Object>> listOfList = new LinkedList<>();
-                    for(long row=0; row<rows/2 ;row++) {
-                        lock.lock();
-                        Group group;
-                        try {
-                            group = recordReader.read();
-                        } finally {
-                            lock.unlock();
-                        }
-                        listOfList.add(Utils.extractListFromGroup(group, table.getColumns()));
-                        if( listOfList.size() == 500000) {
-                            Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
-                            listOfList = new LinkedList<>();
-                        }
+                    for(long row=0; row<rows/3 ;row++) {
+                        listOfList.add(Utils.extractListFromGroup(recordReader.read(), table.getColumns()));
                     }
-                    if( !listOfList.isEmpty() )
-                        Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
+                    Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
+                    return "fini";
+                });
+                Future<String> forwarder2 =  executorService.submit( () -> {
+                    List<List<Object>> listOfList = new LinkedList<>();
+                    for(long row=0; row<rows/3 ;row++) {
+                        listOfList.add(Utils.extractListFromGroup(recordReader.read(), table.getColumns()));
+                    }
+                    Forwarder.forwardRowsToTable(addressIp2,tableName,listOfList);
                     return "fini";
                 });*/
                 List<List<Object>> listOfList = new ArrayList<>((int) rows);
-                SpinLock lockList = new SpinLock();
                 for (long row = 0; row < rows; row++) {
-                    Group group;
-                    group = recordReader.read();
-                    listOfList.add(Utils.extractListFromGroup(group, table.getColumns()));
+                    listOfList.add(Utils.extractListFromGroup(recordReader.read(), table.getColumns()));
                 }
                 table.addAllRows(listOfList);
                 //executorService.shutdown();
@@ -217,32 +197,69 @@ public class Controller {
         }
         executorService.shutdown();*/
 
-        if (selectMethod.getGROUPBY() != null && selectMethod.getAGGREGAT() != null && !selectMethod.getAGGREGAT().isEmpty()) {
-            int idxOfColumnGroupBy = 0;
-            // appliquer le groupBy pour tout mettre dans une Map (chaque valeur associé aux lignes de la table qui lui correspondent)
-            Map<Object, List<List<Object>>> groupBy = new HashMap<>();
-            res.forEach(list -> {
-                Object object = list.get(0);
-                groupBy.computeIfAbsent(object, k -> new ArrayList<>()).add(list);
-            });
+        if (selectMethod.getAGGREGAT() != null && !selectMethod.getAGGREGAT().isEmpty()) {
 
-            List<List<Object>> resultat = new ArrayList<>(groupBy.keySet().size());
-            groupBy.forEach( (obj,list) -> {
-                List<Object> tmp = new ArrayList<>(1+selectMethod.getAGGREGAT().size());
-                tmp.add(obj);
-                for(int idxOfAggregat=0; idxOfAggregat<selectMethod.getAGGREGAT().size(); idxOfAggregat++) {
+            if (selectMethod.getGROUPBY() != null) {
+                // appliquer le groupBy pour tout mettre dans une Map (chaque valeur associé aux lignes de la table qui lui correspondent)
+                Map<Object, List<List<Object>>> groupBy = new HashMap<>();
+                res.forEach(list -> {
+                    Object object = list.get(0);
+                    groupBy.computeIfAbsent(object, k -> new ArrayList<>()).add(list);
+                });
+
+                List<List<Object>> resultat = new ArrayList<>(groupBy.keySet().size());
+                groupBy.forEach((obj, list) -> {
+                    List<Object> tmp = new ArrayList<>(1 + selectMethod.getAGGREGAT().size());
+                    tmp.add(obj);
+                    boolean havingBool = true;
+                    for (int idxOfAggregat = 0; idxOfAggregat < selectMethod.getAGGREGAT().size(); idxOfAggregat++) {
+                        Aggregat aggregat = selectMethod.getAGGREGAT().get(idxOfAggregat);
+                        if (aggregat.getTypeAggregat().equals("COUNT")) {
+                            aggregat.setTypeAggregat("SUM");
+                            tmp.add(aggregat.applyAggregat(list, idxOfAggregat + 1, TypeDB.INT));
+                            aggregat.setTypeAggregat("COUNT");
+                            if (aggregat.getHAVING() != null && !aggregat.getHAVING().checkCondition(tmp, idxOfAggregat + 1, TypeDB.INT)) {
+                                havingBool = false;
+                                break;
+                            }
+                        } else {
+                            tmp.add(aggregat.applyAggregat(list, idxOfAggregat + 1, table.getColumnByName(aggregat.getNameColumn()).getType()));
+                            if (aggregat.getHAVING() != null && !aggregat.getHAVING().checkCondition(tmp, idxOfAggregat + 1, table.getColumnByName(aggregat.getNameColumn()).getType())) {
+                                havingBool = false;
+                                break;
+                            }
+                        }
+                    }
+                    if (havingBool)
+                        resultat.add(tmp);
+                });
+                res = resultat;
+            } else {
+                List<List<Object>> resTmp = new ArrayList<>();
+                List<Object> tmp = new ArrayList<>(selectMethod.getAGGREGAT().size());
+                boolean havingBool = true;
+                for (int idxOfAggregat = 0; idxOfAggregat < selectMethod.getAGGREGAT().size(); idxOfAggregat++) {
                     Aggregat aggregat = selectMethod.getAGGREGAT().get(idxOfAggregat);
-                    if( aggregat.getTypeAggregat().equals("COUNT") ) {
+                    if (aggregat.getTypeAggregat().equals("COUNT")) {
                         aggregat.setTypeAggregat("SUM");
-                        tmp.add(aggregat.applyAggregat(list, idxOfAggregat+1, TypeDB.INT));
+                        tmp.add(aggregat.applyAggregat(res, idxOfAggregat, TypeDB.INT));
                         aggregat.setTypeAggregat("COUNT");
+                        if (aggregat.getHAVING() != null && !aggregat.getHAVING().checkCondition(tmp, idxOfAggregat, TypeDB.INT)) {
+                            havingBool = false;
+                            break;
+                        }
                     } else {
-                        tmp.add(aggregat.applyAggregat(list, idxOfAggregat+1, table.getColumnByName(aggregat.getNameColumn()).getType()));
+                        tmp.add(aggregat.applyAggregat(res, idxOfAggregat, table.getColumnByName(aggregat.getNameColumn()).getType()));
+                        if (aggregat.getHAVING() != null && !aggregat.getHAVING().checkCondition(tmp, idxOfAggregat, table.getColumnByName(aggregat.getNameColumn()).getType())) {
+                            havingBool = false;
+                            break;
+                        }
                     }
                 }
-                resultat.add(tmp);
-            });
-            res = resultat;
+                if (havingBool)
+                    resTmp.add(tmp);
+                res = resTmp;
+            }
         }
 
         System.out.println(res.size());

@@ -1,5 +1,10 @@
 package org.dant.select;
 
+import org.dant.commons.Utils;
+import org.dant.model.Column;
+
+import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 
 public class SelectMethod {
@@ -59,5 +64,18 @@ public class SelectMethod {
 
     public void setAGGREGAT(List<Aggregat> AGGREGAT) {
         this.AGGREGAT = AGGREGAT;
+    }
+
+    public List<Object> applyAllAggregats(List<Column> columns, List<List<Object>> list ) {
+        List<Object> tmp = new LinkedList<>();
+        this.AGGREGAT.parallelStream().forEach( aggregat ->  {
+            if( aggregat.getTypeAggregat().equals("COUNT") && aggregat.getNameColumn().equals("*")) {
+                tmp.add(aggregat.applyAggregat(list, -1, null));
+            } else {
+                int idxOfAggregat = Utils.getIdxColumnByName(columns, aggregat.getNameColumn());
+                tmp.add(aggregat.applyAggregat(list, idxOfAggregat, columns.get(idxOfAggregat).getType()));
+            }
+        });
+        return tmp;
     }
 }
