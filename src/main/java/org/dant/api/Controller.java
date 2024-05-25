@@ -17,6 +17,7 @@ import org.apache.parquet.io.RecordReader;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.parquet.schema.MessageType;
+import io.quarkus.jackson.ObjectMapperCustomizer;
 import org.dant.commons.Forwarder;
 import org.dant.commons.TypeDB;
 import org.dant.commons.Utils;
@@ -28,6 +29,7 @@ import org.jboss.resteasy.reactive.RestPath;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.locks.Lock;
@@ -37,8 +39,8 @@ import java.util.stream.Collectors;
 @Path("/v1")
 public class Controller {
 
-    public static final String addressIp1 = "192.168.6.21";
-    public static final String addressIp2 = "192.168.6.117";
+    public static final String addressIp1 = "192.168.238.21";
+    public static final String addressIp2 = "192.168.238.117";
 
     @POST
     @Path("/parquet/createTable/{tableName}")
@@ -98,31 +100,19 @@ public class Controller {
                 final SpinLock lock = new SpinLock();
 
                 ExecutorService executorService = Executors.newFixedThreadPool(3);
+                SpinLock spinLock = new SpinLock();
+                SpinLock listLock = new SpinLock();
 
-                Future<String> forwarder1 =  executorService.submit( () -> {
-                    List<List<Object>> listOfList = new LinkedList<>();
-                    for(long row=0; row<rows/3 ;row++) {
-                        listOfList.add(Utils.extractListFromGroup(recordReader.read(), table.getColumns()));
-                    }
-                    Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList);
-                    return "fini";
-                });
-                Future<String> forwarder2 =  executorService.submit( () -> {
-                    List<List<Object>> listOfList = new LinkedList<>();
-                    for(long row=0; row<rows/3 ;row++) {
-                        listOfList.add(Utils.extractListFromGroup(recordReader.read(), table.getColumns()));
-                    }
-                    Forwarder.forwardRowsToTable(addressIp2,tableName,listOfList);
-                    return "fini";
-                });
                 List<List<Object>> listOfList = new ArrayList<>((int) rows);
                 for (long row = 0; row < rows; row++) {
-                    listOfList.add(Utils.extractListFromGroup(recordReader.read(), table.getColumns()));
+                    Group group = recordReader.read();
+                    listOfList.add(Utils.extractListFromGroup(group, table.getColumns()));
                 }
-                table.addAllRows(listOfList);
+                //Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList.subList(0, listOfList.size()/3 ));
+                //Forwarder.forwardRowsToTable(addressIp2,tableName,listOfList.subList(listOfList.size()/3, 2*listOfList.size()/3) );
+                table.addAllRows(listOfList.subList( 2*listOfList.size()/3, listOfList.size() ));
                 executorService.shutdown();
-                forwarder1.get();
-                forwarder2.get();
+                //listOfList.clear();
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -157,8 +147,8 @@ public class Controller {
             return "Columns are empty";
         else
             new Table(tableName, listColumns);
-        Forwarder.forwardCreateTable(addressIp1,tableName,listColumns);
-        Forwarder.forwardCreateTable(addressIp2,tableName,listColumns);
+        //Forwarder.forwardCreateTable(addressIp1,tableName,listColumns);
+        //Forwarder.forwardCreateTable(addressIp2,tableName,listColumns);
         return "Table created successfully";
     }
 
@@ -175,7 +165,7 @@ public class Controller {
         if (!table.checkSelectMethod(selectMethod))
             throw new NotFoundException("Params error");
 
-        ExecutorService executorService = Executors.newFixedThreadPool(2);
+        /*ExecutorService executorService = Executors.newFixedThreadPool(2);
         Future<List<List<Object>>> future1 = executorService.submit(new Callable<List<List<Object>>>() {
             @Override
             public List<List<Object>> call() throws Exception {
@@ -187,16 +177,16 @@ public class Controller {
             public List<List<Object>> call() throws Exception {
                 return Forwarder.forwardGetTableContent(addressIp2,selectMethod);
             }
-        });
+        });*/
 
         List<List<Object>> res = table.select(selectMethod);
-        try {
+        /*try {
             res.addAll(future1.get());
             res.addAll(future2.get());
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }
-        executorService.shutdown();
+        executorService.shutdown();*/
 
         if (selectMethod.getAGGREGAT() != null && !selectMethod.getAGGREGAT().isEmpty()) {
 

@@ -26,29 +26,7 @@ public class Utils {
             if (args.get(i) == null)
                 list.add(null);
             else {
-                switch (columns.get(i).getType()) {
-                    case TypeDB.DOUBLE:
-                        list.add(((BigDecimal) args.get(i)).doubleValue());
-                        break;
-                    case TypeDB.STRING:
-                        list.add(args.get(i));
-                        break;
-                    case TypeDB.LONG:
-                        list.add(((BigDecimal) args.get(i)).longValue());
-                        break;
-                    case TypeDB.INT:
-                        list.add(((BigDecimal) args.get(i)).intValue());
-                        break;
-                    case TypeDB.SHORT:
-                        list.add(((BigDecimal) args.get(i)).shortValue());
-                        break;
-                    case TypeDB.BYTE:
-                        list.add(((BigDecimal) args.get(i)).byteValue());
-                        break;
-                    default:
-                        list.add(null);
-                        break;
-                }
+                list.add( columns.get(i).parseJson.apply(args.get(i)) );
             }
         }
         return list;

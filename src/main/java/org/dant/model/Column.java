@@ -4,6 +4,7 @@ import org.apache.parquet.example.data.Group;
 import org.dant.commons.TypeDB;
 import org.dant.index.Index;
 
+import java.math.BigDecimal;
 import java.util.function.Function;
 
 
@@ -12,6 +13,7 @@ public class Column {
     private String name;
     private String type;
     public Function<Group,Object> extractFromGroup;
+    public Function<Object,Object> parseJson;
     private boolean isIndex;
     private Index index;
 
@@ -31,6 +33,7 @@ public class Column {
                         return group.getDouble(this.name,0);
                     return null;
                 };
+                this.parseJson = object -> ((BigDecimal) object).doubleValue();
                 break;
             case TypeDB.STRING:
                 this.extractFromGroup = (group) -> {
@@ -38,6 +41,7 @@ public class Column {
                         return group.getString(this.name,0);
                     return null;
                 };
+                this.parseJson = object ->  object;
                 break;
             case TypeDB.LONG:
                 this.extractFromGroup = (group) -> {
@@ -45,6 +49,7 @@ public class Column {
                         return group.getLong(this.name,0);
                     return null;
                 };
+                this.parseJson = object -> ((BigDecimal) object).longValue();
                 break;
             case TypeDB.INT:
                 this.extractFromGroup = (group) -> {
@@ -52,6 +57,7 @@ public class Column {
                         return group.getInteger(this.name,0);
                     return null;
                 };
+                this.parseJson = object -> ((BigDecimal) object).intValue();
                 break;
             case TypeDB.BYTE:
                 this.extractFromGroup = (group) -> {
@@ -59,6 +65,7 @@ public class Column {
                         return (byte) group.getInteger(this.name, 0);
                     return null;
                 };
+                this.parseJson = object -> ((BigDecimal) object).byteValue();
                 break;
             default:
                 break;
