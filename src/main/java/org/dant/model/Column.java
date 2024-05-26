@@ -30,10 +30,10 @@ public class Column {
             case TypeDB.DOUBLE:
                 this.extractFromGroup = group -> {
                     if (group.getFieldRepetitionCount(this.name) != 0)
-                        return group.getDouble(this.name,0);
+                        return (float) group.getDouble(this.name,0);
                     return null;
                 };
-                this.parseJson = object -> ((BigDecimal) object).doubleValue();
+                this.parseJson = object -> ((BigDecimal) object).floatValue();
                 break;
             case TypeDB.STRING:
                 this.extractFromGroup = (group) -> {

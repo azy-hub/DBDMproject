@@ -34,7 +34,7 @@ public class Utils {
 
     public static Object cast(Object object, String type) {
         return switch (type) {
-            case TypeDB.DOUBLE -> ((BigDecimal) object).doubleValue();
+            case TypeDB.DOUBLE -> ((BigDecimal) object).floatValue();
             case TypeDB.STRING -> object.toString();
             case TypeDB.LONG -> ((BigDecimal) object).longValue();
             case TypeDB.INT -> ((BigDecimal) object).intValue();

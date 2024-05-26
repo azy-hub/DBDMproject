@@ -4,6 +4,7 @@ import gnu.trove.TIntArrayList;
 import org.dant.commons.Utils;
 import org.dant.commons.SpinLock;
 import org.dant.commons.TypeDB;
+import org.dant.compressor.CompressorFactory;
 import org.dant.index.IndexFactory;
 import org.dant.select.Condition;
 import org.dant.select.SelectMethod;

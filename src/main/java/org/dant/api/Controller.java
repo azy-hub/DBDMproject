@@ -99,10 +99,7 @@ public class Controller {
                 RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
                 final SpinLock lock = new SpinLock();
 
-                ExecutorService executorService = Executors.newFixedThreadPool(3);
-                SpinLock spinLock = new SpinLock();
-                SpinLock listLock = new SpinLock();
-
+                //ExecutorService executorService = Executors.newFixedThreadPool(3);
                 List<List<Object>> listOfList = new ArrayList<>((int) rows);
                 for (long row = 0; row < rows; row++) {
                     Group group = recordReader.read();
@@ -110,8 +107,10 @@ public class Controller {
                 }
                 //Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList.subList(0, listOfList.size()/3 ));
                 //Forwarder.forwardRowsToTable(addressIp2,tableName,listOfList.subList(listOfList.size()/3, 2*listOfList.size()/3) );
-                table.addAllRows(listOfList.subList( 2*listOfList.size()/3, listOfList.size() ));
-                executorService.shutdown();
+                //table.addAllRows(listOfList.subList( 2*listOfList.size()/3, listOfList.size() ));
+                table.addAllRows(listOfList);
+                //executorService.shutdown();
+                listOfList = null;
                 //listOfList.clear();
             }
         } catch (Exception e) {
