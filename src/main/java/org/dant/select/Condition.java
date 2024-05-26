@@ -53,7 +53,7 @@ public class Condition {
                 if ( type.equals(TypeDB.STRING) )
                     return ((String)this.value).compareTo((String) list.get(index)) < 0;
                 if ( type.equals(TypeDB.DOUBLE) )
-                    return ((BigDecimal)this.value).doubleValue() < (double) list.get(index);
+                    return ((BigDecimal)this.value).floatValue() < (float) list.get(index);
                 if ( type.equals(TypeDB.LONG) )
                     return ((BigDecimal)this.value).doubleValue() < (long) list.get(index);
                 if ( type.equals(TypeDB.INT) )
@@ -67,9 +67,9 @@ public class Condition {
                 if ( type.equals(TypeDB.STRING) )
                     return (this.value).equals(list.get(index));
                 if ( type.equals(TypeDB.DOUBLE) )
-                    return ((BigDecimal)this.value).doubleValue() == (double) list.get(index);
+                    return ((BigDecimal)this.value).floatValue() == (float) list.get(index);
                 if ( type.equals(TypeDB.LONG) )
-                    return ((BigDecimal)this.value).doubleValue() == (long) list.get(index);
+                    return ((BigDecimal)this.value).longValue() == (long) list.get(index);
                 if ( type.equals(TypeDB.INT) )
                     return ((BigDecimal)this.value).intValue() == (int) list.get(index);
                 if ( type.equals(TypeDB.SHORT) )
@@ -81,9 +81,9 @@ public class Condition {
                 if ( type.equals(TypeDB.STRING) )
                     return ((String)this.value).compareTo((String) list.get(index)) > 0;
                 if ( type.equals(TypeDB.DOUBLE) )
-                    return ((BigDecimal)this.value).doubleValue() > (double) list.get(index);
+                    return ((BigDecimal)this.value).floatValue() > (float) list.get(index);
                 if ( type.equals(TypeDB.LONG) )
-                    return ((BigDecimal)this.value).doubleValue() > (long) list.get(index);
+                    return ((BigDecimal)this.value).longValue() > (long) list.get(index);
                 if ( type.equals(TypeDB.INT) )
                     return ((BigDecimal)this.value).intValue() > (int) list.get(index);
                 if ( type.equals(TypeDB.SHORT) )
@@ -95,9 +95,9 @@ public class Condition {
                 if ( type.equals(TypeDB.STRING) )
                     return ((String)this.value).compareTo((String) list.get(index)) >= 0;
                 if ( type.equals(TypeDB.DOUBLE) )
-                    return ((BigDecimal)this.value).doubleValue() >= (double) list.get(index);
+                    return ((BigDecimal)this.value).floatValue() >= (float) list.get(index);
                 if ( type.equals(TypeDB.LONG) )
-                    return ((BigDecimal)this.value).doubleValue() >= (long) list.get(index);
+                    return ((BigDecimal)this.value).longValue() >= (long) list.get(index);
                 if ( type.equals(TypeDB.INT) )
                     return ((BigDecimal)this.value).intValue() >= (int) list.get(index);
                 if ( type.equals(TypeDB.SHORT) )
@@ -109,9 +109,9 @@ public class Condition {
                 if ( type.equals(TypeDB.STRING) )
                     return ((String)this.value).compareTo((String) list.get(index)) <= 0;
                 if ( type.equals(TypeDB.DOUBLE) )
-                    return ((BigDecimal)this.value).doubleValue() <= (double) list.get(index);
+                    return ((BigDecimal)this.value).floatValue() <= (float) list.get(index);
                 if ( type.equals(TypeDB.LONG) )
-                    return ((BigDecimal)this.value).doubleValue() <= (long) list.get(index);
+                    return ((BigDecimal)this.value).longValue() <= (long) list.get(index);
                 if ( type.equals(TypeDB.INT) )
                     return ((BigDecimal)this.value).intValue() <= (int) list.get(index);
                 if ( type.equals(TypeDB.SHORT) )
@@ -123,9 +123,9 @@ public class Condition {
                 if ( type.equals(TypeDB.STRING) )
                     return !(this.value).equals(list.get(index));
                 if ( type.equals(TypeDB.DOUBLE) )
-                    return ((BigDecimal)this.value).doubleValue() != (double) list.get(index);
+                    return ((BigDecimal)this.value).floatValue() != (float) list.get(index);
                 if ( type.equals(TypeDB.LONG) )
-                    return ((BigDecimal)this.value).doubleValue() != (long) list.get(index);
+                    return ((BigDecimal)this.value).longValue() != (long) list.get(index);
                 if ( type.equals(TypeDB.INT) )
                     return ((BigDecimal)this.value).intValue() != (int) list.get(index);
                 if ( type.equals(TypeDB.SHORT) )

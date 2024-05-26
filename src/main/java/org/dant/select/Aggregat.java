@@ -53,7 +53,7 @@ public class Aggregat {
                 case TypeDB.LONG:
                     return listOfList.stream().mapToLong( list -> (long)list.get(index)).sum();
                 case TypeDB.DOUBLE:
-                    return listOfList.stream().mapToDouble( list -> (double)list.get(index)).sum();
+                    return (float) listOfList.stream().mapToDouble( list -> ((Float)list.get(index)).doubleValue()).sum();
                 case TypeDB.STRING:
                     return null;
             }
@@ -67,11 +67,11 @@ public class Aggregat {
         if (typeAggregat.equals("MAX")) {
             switch (typeColumn) {
                 case TypeDB.INT, TypeDB.SHORT,TypeDB.BYTE:
-                    return listOfList.stream().mapToInt( list -> (int)list.get(index)).max().getAsInt();
+                    return listOfList.parallelStream().mapToInt( list -> (int)list.get(index)).max().getAsInt();
                 case TypeDB.LONG:
-                    return listOfList.stream().mapToLong( list -> (long)list.get(index)).max().getAsLong();
+                    return listOfList.parallelStream().mapToLong( list -> (long)list.get(index)).max().getAsLong();
                 case TypeDB.DOUBLE:
-                    return listOfList.stream().mapToDouble( list -> (double)list.get(index)).max().getAsDouble();
+                    return (float) listOfList.parallelStream().mapToDouble( list -> ((Float)list.get(index)).doubleValue()).max().getAsDouble();
                 case TypeDB.STRING:
                     return null;
             }
@@ -83,7 +83,7 @@ public class Aggregat {
                 case TypeDB.LONG:
                     return listOfList.stream().mapToLong( list -> (long)list.get(index)).min().getAsLong();
                 case TypeDB.DOUBLE:
-                    return listOfList.stream().mapToDouble( list -> (double)list.get(index)).min().getAsDouble();
+                    return (float) listOfList.stream().mapToDouble( list -> ((Float)list.get(index)).doubleValue() ).min().getAsDouble();
                 case TypeDB.STRING:
                     return null;
             }
@@ -95,7 +95,7 @@ public class Aggregat {
                 case TypeDB.LONG:
                     return (double) listOfList.stream().mapToLong( list -> (long)list.get(index)).sum() / (double) listOfList.size();
                 case TypeDB.DOUBLE:
-                    return listOfList.stream().mapToDouble( list -> (double)list.get(index)).sum() / (double) listOfList.size();
+                    return (float) (listOfList.stream().mapToDouble( list -> ((Float)list.get(index)).doubleValue() ).sum() / (double) listOfList.size());
                 case TypeDB.STRING:
                     return null;
             }
