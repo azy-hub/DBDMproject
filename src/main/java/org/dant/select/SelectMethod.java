@@ -3,30 +3,31 @@ package org.dant.select;
 import org.dant.commons.Utils;
 import org.dant.model.Column;
 
-import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class SelectMethod {
 
-    private List<String> SELECT;
+    private List<ColumnSelected> SELECT;
     private String FROM;
     private List<Condition> WHERE;
     private String GROUPBY;
-    private List<Aggregat> AGGREGAT;
+
+    private List<Having> HAVING;
 
     public SelectMethod() {
     }
 
-    public SelectMethod(List<String> SELECT, String FROM, List<Condition> WHERE, String GROUPBY, List<Aggregat> AGGREGAT) {
-        this.SELECT = SELECT;
+    public SelectMethod(List<ColumnSelected> SELECT, String FROM, List<Condition> WHERE, String GROUPBY, List<Having> HAVING) {
         this.FROM = FROM;
         this.WHERE = WHERE;
         this.GROUPBY = GROUPBY;
-        this.AGGREGAT = AGGREGAT;
+        this.SELECT = SELECT;
+        this.HAVING = HAVING;
     }
 
-    public List<String> getSELECT() {
+    public List<ColumnSelected>getSELECT() {
         return SELECT;
     }
 
@@ -38,7 +39,7 @@ public class SelectMethod {
         return WHERE;
     }
 
-    public void setSELECT(List<String> SELECT) {
+    public void setSELECT(List<ColumnSelected> SELECT) {
         this.SELECT = SELECT;
     }
 
@@ -58,22 +59,24 @@ public class SelectMethod {
         this.GROUPBY = GROUPBY;
     }
 
-    public List<Aggregat> getAGGREGAT() {
-        return AGGREGAT;
+    public List<ColumnSelected> getAGGREGAT() { return this.SELECT.stream().filter( columnSelected -> columnSelected.getTypeAggregat() != null ).collect(Collectors.toList()); }
+
+    public List<Having> getHAVING() {
+        return HAVING;
     }
 
-    public void setAGGREGAT(List<Aggregat> AGGREGAT) {
-        this.AGGREGAT = AGGREGAT;
+    public void setHAVING(List<Having> HAVING) {
+        this.HAVING = HAVING;
     }
 
     public List<Object> applyAllAggregats(List<Column> columns, List<List<Object>> list ) {
         List<Object> tmp = new LinkedList<>();
-        this.AGGREGAT.parallelStream().forEach( aggregat ->  {
-            if( aggregat.getTypeAggregat().equals("COUNT") && aggregat.getNameColumn().equals("*")) {
-                tmp.add(aggregat.applyAggregat(list, -1, null));
+        this.getAGGREGAT().forEach(columnSelected ->  {
+            if( columnSelected.getTypeAggregat().equalsIgnoreCase("COUNT") && columnSelected.getNameColumn().equals("*")) {
+                tmp.add(columnSelected.applyAggregat(list, -1, null));
             } else {
-                int idxOfAggregat = Utils.getIdxColumnByName(columns, aggregat.getNameColumn());
-                tmp.add(aggregat.applyAggregat(list, idxOfAggregat, columns.get(idxOfAggregat).getType()));
+                int idxOfAggregat = Utils.getIdxColumnByName(columns, columnSelected.getNameColumn());
+                tmp.add(columnSelected.applyAggregat(list, idxOfAggregat, columns.get(idxOfAggregat).getType()));
             }
         });
         return tmp;

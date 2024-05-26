@@ -4,8 +4,8 @@ import gnu.trove.TIntArrayList;
 import org.dant.commons.Utils;
 import org.dant.commons.SpinLock;
 import org.dant.commons.TypeDB;
-import org.dant.compressor.CompressorFactory;
 import org.dant.index.IndexFactory;
+import org.dant.select.ColumnSelected;
 import org.dant.select.Condition;
 import org.dant.select.SelectMethod;
 
@@ -101,13 +101,13 @@ public class Table {
         return null;
     }
 
-    public List<Column> getColumnsByNames(List<String> list) {
-        if (list.contains("*")) {
+    public List<Column> getColumnsByNames(List<ColumnSelected> list) {
+        if (list.stream().anyMatch( columnSelected -> columnSelected.getNameColumn().equals("*") ) ) {
             return columns;
         }
-        return list.stream().map( nameColumn -> {
+        return list.stream().map( columnSelected -> {
             for( Column column : columns) {
-                if( column.getName().equals(nameColumn))
+                if( column.getName().equals(columnSelected.getNameColumn()))
                     return column;
             }
             return null;
@@ -157,9 +157,7 @@ public class Table {
         if ( selectMethod.getGROUPBY() != null && selectMethod.getGROUPBY().isEmpty() ) {
             if ( selectMethod.getSELECT().stream().noneMatch(columnName -> columnName.equals(selectMethod.getGROUPBY()) ) )
                 return false;
-            if ( selectMethod.getAGGREGAT().stream().anyMatch( aggregat -> aggregat.getNameColumn().equals(selectMethod.getGROUPBY()) ) )
-                return false;
-            if ( selectMethod.getAGGREGAT().stream().anyMatch( aggregat -> !selectMethod.getSELECT().contains(aggregat.getNameColumn()) ) )
+            if ( selectMethod.getSELECT().stream().filter( columnSelected -> columnSelected.getTypeAggregat() != null ).anyMatch( aggregat -> aggregat.getNameColumn().equals(selectMethod.getGROUPBY()) ) )
                 return false;
         }
         return true;
@@ -195,17 +193,17 @@ public class Table {
 
         }
 
-
+        List<ColumnSelected> aggregats = selectMethod.getAGGREGAT();
         // Vérifie si un groupBy et un aggrégat ont été demandé dans la requete SELECT
-        if ( selectMethod.getAGGREGAT() != null && !selectMethod.getAGGREGAT().isEmpty()) {
+        if ( aggregats != null && !aggregats.isEmpty()) {
             if ( selectMethod.getGROUPBY() != null && !selectMethod.getGROUPBY().isEmpty()) {
                 int idxOfColumnGroupBy = Utils.getIdxColumnByName(columns, selectMethod.getGROUPBY()); // Trouve l'index de la colonne à regrouper parmis les colonnes selectionnées
                 // si le groupBy est appliqué sur un index et que aucune condition de filtre n'a été appliqué alors on peut directement récupérer les valeurs du groupBy par l'index
                 if ( columnList.get(idxOfColumnGroupBy).isIndex() && nbConditions == 0) {
 
-                    List<List<Object>> groupby = new ArrayList<>( columnList.get(idxOfColumnGroupBy).getIndex().getKeys().size() );
-                    columnList.get(idxOfColumnGroupBy).getIndex().getKeys().parallelStream().forEach(key -> {
-                        TIntArrayList idxRows = columnList.get(idxOfColumnGroupBy).getIndex().getIndexFromValue(key);
+                    List<List<Object>> groupby = new ArrayList<>( columns.get(idxOfColumnGroupBy).getIndex().getKeys().size() );
+                    columns.get(idxOfColumnGroupBy).getIndex().getKeys().parallelStream().forEach(key -> {
+                        TIntArrayList idxRows = columns.get(idxOfColumnGroupBy).getIndex().getIndexFromValue(key);
                         List<List<Object>> resultat = new ArrayList<>(idxRows.size());
                         for (int idx = 0; idx < idxRows.size(); idx++) {
                             resultat.add(getRows().get(idxRows.get(idx)));
@@ -216,9 +214,7 @@ public class Table {
                     });
                     res = groupby;
 
-                }
-                else {
-                    System.out.println("group by sans index");
+                } else {
                     Map<Object, List<List<Object>>> groupBy = new HashMap<>();
                     // Parcours chaque ligne et regroupe chaque valeur avec les lignes qui lui correspondent
                     SpinLock groupByLock = new SpinLock();
@@ -230,8 +226,8 @@ public class Table {
                     });
 
                     // Parcours la map générer grace au regroupement et applique les aggrégats demandés
-                    List<List<Object>> resultat = Collections.synchronizedList(new LinkedList<>());
-                    groupBy.keySet().parallelStream().forEach( obj -> {
+                    List<List<Object>> resultat = new ArrayList<>();
+                    groupBy.keySet().stream().forEach( obj -> {
                         List<Object> tmp = selectMethod.applyAllAggregats(columns, groupBy.get(obj));
                         tmp.add(0, obj);
                         resultat.add( tmp );

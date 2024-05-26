@@ -2,23 +2,20 @@ package org.dant.select;
 
 import org.dant.commons.TypeDB;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
-public class Aggregat {
+public class ColumnSelected {
 
     private String nameColumn;
 
     private String typeAggregat;
 
-    private Condition HAVING;
+    public ColumnSelected() {}
 
-    public Aggregat() {}
-
-    public Aggregat(String nameColumn, String typeAggregat, Condition HAVING) {
+    public ColumnSelected(String nameColumn, String typeAggregat, Condition HAVING) {
         this.nameColumn = nameColumn;
         this.typeAggregat = typeAggregat;
-        this.HAVING = HAVING;
     }
 
     public String getNameColumn() {
@@ -37,12 +34,17 @@ public class Aggregat {
         this.typeAggregat = typeAggregat;
     }
 
-    public Condition getHAVING() {
-        return HAVING;
+    @Override
+    public boolean equals(Object object) {
+        if (this == object) return true;
+        if (object == null || getClass() != object.getClass()) return false;
+        ColumnSelected that = (ColumnSelected) object;
+        return Objects.equals(nameColumn, that.nameColumn) && Objects.equals(typeAggregat, that.typeAggregat);
     }
 
-    public void setHAVING(Condition HAVING) {
-        this.HAVING = HAVING;
+    @Override
+    public int hashCode() {
+        return Objects.hash(nameColumn, typeAggregat);
     }
 
     public Object applyAggregat(List<List<Object>> listOfList, int index, String typeColumn) {
@@ -91,9 +93,9 @@ public class Aggregat {
         if (typeAggregat.equals("AVG")) {
             switch (typeColumn) {
                 case TypeDB.INT, TypeDB.SHORT,TypeDB.BYTE:
-                    return (double) listOfList.stream().mapToInt( list -> (int)list.get(index)).sum() / (double) listOfList.size();
+                    return (float) (listOfList.stream().mapToInt( list -> (int)list.get(index)).sum() / (double) listOfList.size());
                 case TypeDB.LONG:
-                    return (double) listOfList.stream().mapToLong( list -> (long)list.get(index)).sum() / (double) listOfList.size();
+                    return (float) (listOfList.stream().mapToLong( list -> (long)list.get(index)).sum() / (double) listOfList.size());
                 case TypeDB.DOUBLE:
                     return (float) (listOfList.stream().mapToDouble( list -> ((Float)list.get(index)).doubleValue() ).sum() / (double) listOfList.size());
                 case TypeDB.STRING:

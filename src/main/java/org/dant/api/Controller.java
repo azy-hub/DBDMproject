@@ -17,23 +17,20 @@ import org.apache.parquet.io.RecordReader;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.parquet.schema.MessageType;
-import io.quarkus.jackson.ObjectMapperCustomizer;
 import org.dant.commons.Forwarder;
 import org.dant.commons.TypeDB;
 import org.dant.commons.Utils;
 import org.dant.commons.SpinLock;
 import org.dant.model.*;
-import org.dant.select.Aggregat;
+import org.dant.select.ColumnSelected;
+import org.dant.select.Having;
 import org.dant.select.SelectMethod;
 import org.jboss.resteasy.reactive.RestPath;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 @Path("/v1")
@@ -187,7 +184,8 @@ public class Controller {
         }
         executorService.shutdown();*/
 
-        if (selectMethod.getAGGREGAT() != null && !selectMethod.getAGGREGAT().isEmpty()) {
+        List<ColumnSelected> aggregats = selectMethod.getAGGREGAT();
+        if (aggregats != null && !aggregats.isEmpty()) {
 
             if (selectMethod.getGROUPBY() != null) {
                 // appliquer le groupBy pour tout mettre dans une Map (chaque valeur associé aux lignes de la table qui lui correspondent)
@@ -199,50 +197,55 @@ public class Controller {
 
                 List<List<Object>> resultat = new ArrayList<>(groupBy.keySet().size());
                 groupBy.forEach((obj, list) -> {
-                    List<Object> tmp = new ArrayList<>(1 + selectMethod.getAGGREGAT().size());
+                    List<Object> tmp = new ArrayList<>(1 + aggregats.size());
                     tmp.add(obj);
                     boolean havingBool = true;
-                    for (int idxOfAggregat = 0; idxOfAggregat < selectMethod.getAGGREGAT().size(); idxOfAggregat++) {
-                        Aggregat aggregat = selectMethod.getAGGREGAT().get(idxOfAggregat);
-                        if (aggregat.getTypeAggregat().equals("COUNT")) {
-                            aggregat.setTypeAggregat("SUM");
-                            tmp.add(aggregat.applyAggregat(list, idxOfAggregat + 1, TypeDB.INT));
-                            aggregat.setTypeAggregat("COUNT");
-                            if (aggregat.getHAVING() != null && !aggregat.getHAVING().checkCondition(tmp, idxOfAggregat + 1, TypeDB.INT)) {
-                                havingBool = false;
-                                break;
-                            }
+                    for (int idxOfAggregat = 0; idxOfAggregat < aggregats.size(); idxOfAggregat++) {
+                        ColumnSelected columnSelected = aggregats.get(idxOfAggregat);
+                        if (columnSelected.getTypeAggregat().equalsIgnoreCase("COUNT")) {
+                            columnSelected.setTypeAggregat("SUM");
+                            tmp.add(columnSelected.applyAggregat(list, idxOfAggregat + 1, TypeDB.INT));
+                            columnSelected.setTypeAggregat("COUNT");
+                        } else if (columnSelected.getTypeAggregat().equalsIgnoreCase("AVG")) {
+                            tmp.add(columnSelected.applyAggregat(list, idxOfAggregat + 1, TypeDB.DOUBLE));
                         } else {
-                            tmp.add(aggregat.applyAggregat(list, idxOfAggregat + 1, table.getColumnByName(aggregat.getNameColumn()).getType()));
-                            if (aggregat.getHAVING() != null && !aggregat.getHAVING().checkCondition(tmp, idxOfAggregat + 1, table.getColumnByName(aggregat.getNameColumn()).getType())) {
-                                havingBool = false;
-                                break;
+                            tmp.add(columnSelected.applyAggregat(list, idxOfAggregat + 1, table.getColumnByName(columnSelected.getNameColumn()).getType()));
+                        }
+
+                        if( !(selectMethod.getHAVING() == null || selectMethod.getHAVING().isEmpty()) ) {
+                            for(Having having : selectMethod.getHAVING()) {
+                                if( having.getAggregate().equals(columnSelected) && !having.checkCondition(tmp,idxOfAggregat+1,table.getColumnByName(columnSelected.getNameColumn()).getType()) ) {
+                                    havingBool = false;
+                                    break;
+                                }
                             }
                         }
+
                     }
-                    if (havingBool)
+                    if(havingBool)
                         resultat.add(tmp);
                 });
                 res = resultat;
             } else {
                 List<List<Object>> resTmp = new ArrayList<>();
-                List<Object> tmp = new ArrayList<>(selectMethod.getAGGREGAT().size());
+                List<Object> tmp = new ArrayList<>(aggregats.size());
                 boolean havingBool = true;
-                for (int idxOfAggregat = 0; idxOfAggregat < selectMethod.getAGGREGAT().size(); idxOfAggregat++) {
-                    Aggregat aggregat = selectMethod.getAGGREGAT().get(idxOfAggregat);
-                    if (aggregat.getTypeAggregat().equals("COUNT")) {
-                        aggregat.setTypeAggregat("SUM");
-                        tmp.add(aggregat.applyAggregat(res, idxOfAggregat, TypeDB.INT));
-                        aggregat.setTypeAggregat("COUNT");
-                        if (aggregat.getHAVING() != null && !aggregat.getHAVING().checkCondition(tmp, idxOfAggregat, TypeDB.INT)) {
-                            havingBool = false;
-                            break;
-                        }
+                for (int idxOfAggregat = 0; idxOfAggregat < aggregats.size(); idxOfAggregat++) {
+                    ColumnSelected columnSelected = aggregats.get(idxOfAggregat);
+                    if (columnSelected.getTypeAggregat().equals("COUNT")) {
+                        columnSelected.setTypeAggregat("SUM");
+                        tmp.add(columnSelected.applyAggregat(res, idxOfAggregat, TypeDB.INT));
+                        columnSelected.setTypeAggregat("COUNT");
                     } else {
-                        tmp.add(aggregat.applyAggregat(res, idxOfAggregat, table.getColumnByName(aggregat.getNameColumn()).getType()));
-                        if (aggregat.getHAVING() != null && !aggregat.getHAVING().checkCondition(tmp, idxOfAggregat, table.getColumnByName(aggregat.getNameColumn()).getType())) {
-                            havingBool = false;
-                            break;
+                        tmp.add(columnSelected.applyAggregat(res, idxOfAggregat, table.getColumnByName(columnSelected.getNameColumn()).getType()));
+                    }
+
+                    if( !(selectMethod.getHAVING() == null || selectMethod.getHAVING().isEmpty()) ) {
+                        for(Having having : selectMethod.getHAVING()) {
+                            if( having.getAggregate().equals(columnSelected) && !having.getCondition().checkCondition(tmp,idxOfAggregat,table.getColumnByName(columnSelected.getNameColumn()).getType()) ) {
+                                havingBool = false;
+                                break;
+                            }
                         }
                     }
                 }
@@ -251,8 +254,6 @@ public class Controller {
                 res = resTmp;
             }
         }
-
-        System.out.println(res.size());
         return res;
     }
 

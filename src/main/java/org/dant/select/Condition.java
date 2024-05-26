@@ -55,7 +55,7 @@ public class Condition {
                 if ( type.equals(TypeDB.DOUBLE) )
                     return ((BigDecimal)this.value).floatValue() < (float) list.get(index);
                 if ( type.equals(TypeDB.LONG) )
-                    return ((BigDecimal)this.value).doubleValue() < (long) list.get(index);
+                    return ((BigDecimal)this.value).longValue() < (long) list.get(index);
                 if ( type.equals(TypeDB.INT) )
                     return ((BigDecimal)this.value).intValue() < (int) list.get(index);
                 if ( type.equals(TypeDB.SHORT) )

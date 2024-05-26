@@ -65,7 +65,7 @@ public class Utils {
 
     public static int getIdxColumnByName(List<Column> columnList, String name) {
         for(Column column : columnList) {
-            if (column.getName().equals(name)) {
+            if (column.getName().equalsIgnoreCase(name)) {
                 return columnList.indexOf(column);
             }
         }
@@ -74,7 +74,7 @@ public class Utils {
 
     public static int getIndexOfColumnByCondition (Condition condition, List<Column> columns) {
         for (Column column : columns) {
-            if (condition.getNameColumn().equals(column.getName())) {
+            if (condition.getNameColumn().equalsIgnoreCase(column.getName())) {
                 return columns.indexOf(column);
             }
         }
