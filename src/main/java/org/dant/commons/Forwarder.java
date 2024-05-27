@@ -46,6 +46,7 @@ public class Forwarder {
     public static String forwardRowsToTable(String ipAddress, String name, List<List<Object>> rows) {
         String url = "http://" + ipAddress + ":" + 8080 + "/slave/insertRows/" + name;
 
+        System.out.println("debut envoie");
         // Convertissez la liste en JSON à l'aide de Jackson
         String jsonBody;
         try {
@@ -60,8 +61,9 @@ public class Forwarder {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
+        System.out.println("Envoie à :" + ipAddress+ "avec une taille de : "+jsonBody.length());
         try {
-            httpClient.send(request, HttpResponse.BodyHandlers.discarding());
+            httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding());
         } catch (Exception e) {
             System.out.println("Erreur in forwarding row to other slave node");
         }

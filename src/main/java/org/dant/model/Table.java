@@ -63,7 +63,9 @@ public class Table {
             threadList.add(thread);
             thread.start();
         }
+        lockAdd.lock();
         rows.addAll(lignes);
+        lockAdd.unlock();
         for(Thread thread : threadList) {
             try {
                 thread.join();

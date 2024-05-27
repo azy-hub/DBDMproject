@@ -80,11 +80,12 @@ public class Controller {
     @POST
     @Path("/parquet/fillTable/{tableName}")
     @Consumes(MediaType.APPLICATION_OCTET_STREAM)
-    public void readParquet(@RestPath String tableName, File file) throws IOException {
+    public String readParquet(@RestPath String tableName, File file) throws IOException {
+        long startTime = System.currentTimeMillis();
         Configuration conf = new Configuration();
         Table table = DataBase.get().get(tableName);
         if (table == null)
-            return;
+            return "Table introuvable";
         org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path(file.getAbsolutePath());
         try (ParquetFileReader parquetFileReader = new ParquetFileReader(HadoopInputFile.fromPath(path, new Configuration()), ParquetReadOptions.builder().build())) {
             ParquetMetadata footer = parquetFileReader.getFooter();
@@ -94,26 +95,33 @@ public class Controller {
             while ((pages = parquetFileReader.readNextRowGroup()) != null) {
                 long rows = pages.getRowCount();
                 RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
-                final SpinLock lock = new SpinLock();
-
-                //ExecutorService executorService = Executors.newFixedThreadPool(3);
-                List<List<Object>> listOfList = new ArrayList<>((int) rows);
-                for (long row = 0; row < rows; row++) {
+                ExecutorService executorService = Executors.newFixedThreadPool(2);
+                List<List<Object>> listOfList1 = new ArrayList<>((int) rows/3);
+                for (long row = 0; row < rows/3; row++) {
                     Group group = recordReader.read();
-                    listOfList.add(Utils.extractListFromGroup(group, table.getColumns()));
+                    listOfList1.add(Utils.extractListFromGroup(group, table.getColumns()));
                 }
-                //Forwarder.forwardRowsToTable(addressIp1,tableName,listOfList.subList(0, listOfList.size()/3 ));
-                //Forwarder.forwardRowsToTable(addressIp2,tableName,listOfList.subList(listOfList.size()/3, 2*listOfList.size()/3) );
-                //table.addAllRows(listOfList.subList( 2*listOfList.size()/3, listOfList.size() ));
-                table.addAllRows(listOfList);
-                //executorService.shutdown();
-                listOfList = null;
-                //listOfList.clear();
+                Future<String> future1 = executorService.submit( () -> Forwarder.forwardRowsToTable(addressIp1,tableName, listOfList1));
+                List<List<Object>> listOfList2 = new ArrayList<>((int) rows/3);
+                for (long row = 0; row < rows/3; row++) {
+                    Group group = recordReader.read();
+                    listOfList2.add(Utils.extractListFromGroup(group, table.getColumns()));
+                }
+                Future<String> future2 = executorService.submit( () -> Forwarder.forwardRowsToTable(addressIp2,tableName, listOfList2));
+                List<List<Object>> listOfList3 = new ArrayList<>((int) rows/3);
+                for (long row = 0; row < rows/3; row++) {
+                    Group group = recordReader.read();
+                    listOfList3.add(Utils.extractListFromGroup(group, table.getColumns()));
+                }
+                table.addAllRows(listOfList3);
+                listOfList3 = null;
+                executorService.shutdown();
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-        System.out.println("FINI !");
+        long endTime = System.currentTimeMillis();
+        return "Temps d'exécution : " + (endTime - startTime) + " ms";
     }
 
     @GET
@@ -143,8 +151,8 @@ public class Controller {
             return "Columns are empty";
         else
             new Table(tableName, listColumns);
-        //Forwarder.forwardCreateTable(addressIp1,tableName,listColumns);
-        //Forwarder.forwardCreateTable(addressIp2,tableName,listColumns);
+        Forwarder.forwardCreateTable(addressIp1,tableName,listColumns);
+        Forwarder.forwardCreateTable(addressIp2,tableName,listColumns);
         return "Table created successfully";
     }
 
@@ -161,7 +169,7 @@ public class Controller {
         if (!table.checkSelectMethod(selectMethod))
             throw new NotFoundException("Params error");
 
-        /*ExecutorService executorService = Executors.newFixedThreadPool(2);
+        ExecutorService executorService = Executors.newFixedThreadPool(2);
         Future<List<List<Object>>> future1 = executorService.submit(new Callable<List<List<Object>>>() {
             @Override
             public List<List<Object>> call() throws Exception {
@@ -173,16 +181,16 @@ public class Controller {
             public List<List<Object>> call() throws Exception {
                 return Forwarder.forwardGetTableContent(addressIp2,selectMethod);
             }
-        });*/
+        });
 
         List<List<Object>> res = table.select(selectMethod);
-        /*try {
+        try {
             res.addAll(future1.get());
             res.addAll(future2.get());
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }
-        executorService.shutdown();*/
+        executorService.shutdown();
 
         List<ColumnSelected> aggregats = selectMethod.getAGGREGAT();
         if (aggregats != null && !aggregats.isEmpty()) {
