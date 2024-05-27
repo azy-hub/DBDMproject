@@ -36,8 +36,8 @@ import java.util.stream.Collectors;
 @Path("/v1")
 public class Controller {
 
-    public static final String addressIp1 = "192.168.238.21";
-    public static final String addressIp2 = "192.168.238.117";
+    public static final String addressIp1 = "10.51.30.32";
+    public static final String addressIp2 = "10.51.17.77";
 
     @POST
     @Path("/parquet/createTable/{tableName}")

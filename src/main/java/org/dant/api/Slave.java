@@ -65,6 +65,7 @@ public class Slave {
     @Path("/insertRows/{tableName}")
     @Consumes(MediaType.APPLICATION_JSON)
     public void insertRows(@RestPath String tableName, List<List<Object>> listArgs) {
+        System.out.println("Rows received !");
         Table table = DataBase.get().get(tableName);
         if(table == null)
             throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");

@@ -127,6 +127,7 @@ public class Forwarder {
             System.out.println("Erreur lors de la sérialisation des données en JSON");
             return null;
         }
+        System.out.println(jsonBody);
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Content-Type", "application/json")

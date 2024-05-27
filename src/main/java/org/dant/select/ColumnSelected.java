@@ -2,10 +2,11 @@ package org.dant.select;
 
 import org.dant.commons.TypeDB;
 
+import java.io.Serializable;
 import java.util.List;
 import java.util.Objects;
 
-public class ColumnSelected {
+public class ColumnSelected implements Serializable {
 
     private String nameColumn;
 

@@ -2,9 +2,10 @@ package org.dant.select;
 
 import org.dant.commons.TypeDB;
 
+import java.io.Serializable;
 import java.util.List;
 
-public class Having {
+public class Having implements Serializable {
 
     private ColumnSelected aggregate;
 

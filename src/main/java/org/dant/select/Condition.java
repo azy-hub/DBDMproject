@@ -2,10 +2,11 @@ package org.dant.select;
 
 import org.dant.commons.TypeDB;
 
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.List;
 
-public class Condition {
+public class Condition implements Serializable {
 
     private String nameColumn;
     private String op;

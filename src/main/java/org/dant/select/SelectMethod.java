@@ -3,11 +3,12 @@ package org.dant.select;
 import org.dant.commons.Utils;
 import org.dant.model.Column;
 
+import java.io.Serializable;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class SelectMethod {
+public class SelectMethod implements Serializable {
 
     private List<ColumnSelected> SELECT;
     private String FROM;
