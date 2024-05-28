@@ -4,15 +4,16 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.fs.FSDataOutputStream;
-import org.apache.parquet.ParquetReadOptions;
 import org.apache.parquet.column.ColumnDescriptor;
 import org.apache.parquet.column.page.PageReadStore;
 import org.apache.parquet.example.data.Group;
 import org.apache.parquet.example.data.simple.convert.GroupRecordConverter;
+import org.apache.parquet.format.converter.ParquetMetadataConverter;
 import org.apache.parquet.hadoop.ParquetFileReader;
 import org.apache.parquet.hadoop.metadata.ParquetMetadata;
 import org.apache.parquet.hadoop.util.HadoopInputFile;
 import org.apache.parquet.io.ColumnIOFactory;
+import org.apache.parquet.io.MessageColumnIO;
 import org.apache.parquet.io.RecordReader;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
@@ -20,11 +21,11 @@ import org.apache.parquet.schema.MessageType;
 import org.dant.commons.Forwarder;
 import org.dant.commons.TypeDB;
 import org.dant.commons.Utils;
-import org.dant.commons.SpinLock;
 import org.dant.model.*;
 import org.dant.select.ColumnSelected;
 import org.dant.select.Having;
 import org.dant.select.SelectMethod;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.resteasy.reactive.RestPath;
 import java.io.File;
 import java.io.IOException;
@@ -36,8 +37,10 @@ import java.util.stream.Collectors;
 @Path("/v1")
 public class Controller {
 
-    public static final String addressIp1 = "10.51.30.32";
-    public static final String addressIp2 = "10.51.17.77";
+    @ConfigProperty(name = "address.ip.1")
+    String addressIp1;
+    @ConfigProperty(name = "address.ip.2")
+    String addressIp2;
 
     @POST
     @Path("/parquet/createTable/{tableName}")
@@ -60,8 +63,9 @@ public class Controller {
                 ParquetMetadata parquetMetadata = parquetFileReader.getFooter();
                 MessageType parquetSchema = parquetMetadata.getFileMetaData().getSchema();
                 List<Column> columns = new ArrayList<>();
+                int i=0;
                 for (ColumnDescriptor columnDescriptor : parquetSchema.getColumns()) {
-                    columns.add(new Column(columnDescriptor.getPrimitiveType().getName(), columnDescriptor.getPrimitiveType().getPrimitiveTypeName().toString()));
+                    columns.add(new Column(columnDescriptor.getPrimitiveType().getName(), columnDescriptor.getPrimitiveType().getPrimitiveTypeName().toString(), i++));
                 }
                 createTable(tableName,columns);
                 return "Table created successfully";
@@ -87,35 +91,35 @@ public class Controller {
         if (table == null)
             return "Table introuvable";
         org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path(file.getAbsolutePath());
-        try (ParquetFileReader parquetFileReader = new ParquetFileReader(HadoopInputFile.fromPath(path, new Configuration()), ParquetReadOptions.builder().build())) {
-            ParquetMetadata footer = parquetFileReader.getFooter();
-            MessageType schema = footer.getFileMetaData().getSchema();
-            PageReadStore pages;
-
-            while ((pages = parquetFileReader.readNextRowGroup()) != null) {
-                long rows = pages.getRowCount();
-                RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
+        ParquetMetadata footer = ParquetFileReader.readFooter(conf, path, ParquetMetadataConverter.NO_FILTER);
+        MessageType schema = footer.getFileMetaData().getSchema();
+        MessageColumnIO columnIO = new ColumnIOFactory().getColumnIO(schema);
+        GroupRecordConverter groupRecordConverter = new GroupRecordConverter(schema);
+        try (ParquetFileReader parquetFileReader = new ParquetFileReader( conf, path, footer)) {
+            PageReadStore pages = null;
+            while ((pages = parquetFileReader.readNextRowGroup()) != null ) {
+                int rows = (int) pages.getRowCount();
+                RecordReader<Group> recordReader = columnIO.getRecordReader(pages, groupRecordConverter);
                 ExecutorService executorService = Executors.newFixedThreadPool(2);
-                List<List<Object>> listOfList1 = new ArrayList<>((int) rows/3);
-                for (long row = 0; row < rows/3; row++) {
-                    Group group = recordReader.read();
-                    listOfList1.add(Utils.extractListFromGroup(group, table.getColumns()));
+                List<List<Object>> listOfList1 = new ArrayList<>(rows/3);
+                for (int row = 0; row < rows/3; row++) {
+                    listOfList1.add(Utils.extractListFromGroup(recordReader.read(), table.getColumns()));
                 }
                 Future<String> future1 = executorService.submit( () -> Forwarder.forwardRowsToTable(addressIp1,tableName, listOfList1));
-                List<List<Object>> listOfList2 = new ArrayList<>((int) rows/3);
-                for (long row = 0; row < rows/3; row++) {
-                    Group group = recordReader.read();
-                    listOfList2.add(Utils.extractListFromGroup(group, table.getColumns()));
+                List<List<Object>> listOfList2 = new ArrayList<>(rows/3);
+                for (int row = 0; row < rows/3; row++) {
+                    listOfList2.add(Utils.extractListFromGroup(recordReader.read(), table.getColumns()));
                 }
                 Future<String> future2 = executorService.submit( () -> Forwarder.forwardRowsToTable(addressIp2,tableName, listOfList2));
-                List<List<Object>> listOfList3 = new ArrayList<>((int) rows/3);
-                for (long row = 0; row < rows/3; row++) {
-                    Group group = recordReader.read();
-                    listOfList3.add(Utils.extractListFromGroup(group, table.getColumns()));
+                List<List<Object>> listOfList3 = new ArrayList<>(rows/3);
+                for (int row = 0; row < rows/3; row++) {
+                    listOfList3.add(Utils.extractListFromGroup(recordReader.read(), table.getColumns()));
                 }
                 table.addAllRows(listOfList3);
                 listOfList3 = null;
                 executorService.shutdown();
+                future1.get();
+                future2.get();
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -173,13 +177,13 @@ public class Controller {
         Future<List<List<Object>>> future1 = executorService.submit(new Callable<List<List<Object>>>() {
             @Override
             public List<List<Object>> call() throws Exception {
-                return Forwarder.forwardGetTableContent(addressIp1,selectMethod);
+                return Forwarder.forwardSelect(addressIp1,selectMethod);
             }
         });
         Future<List<List<Object>>> future2 = executorService.submit(new Callable<List<List<Object>>>() {
             @Override
             public List<List<Object>> call() throws Exception {
-                return Forwarder.forwardGetTableContent(addressIp2,selectMethod);
+                return Forwarder.forwardSelect(addressIp2,selectMethod);
             }
         });
 

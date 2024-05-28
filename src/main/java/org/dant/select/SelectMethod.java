@@ -8,7 +8,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class SelectMethod implements Serializable {
+public class SelectMethod {
 
     private List<ColumnSelected> SELECT;
     private String FROM;

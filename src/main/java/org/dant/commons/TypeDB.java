@@ -1,5 +1,7 @@
 package org.dant.commons;
 
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+
 public interface TypeDB {
 
     public static final String STRING = "STRING";

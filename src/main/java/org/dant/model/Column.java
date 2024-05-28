@@ -16,53 +16,55 @@ public class Column {
     public Function<Object,Object> parseJson;
     private boolean isIndex;
     private Index index;
+    private int number;
 
 
 
     public Column(){
     }
 
-    public Column(String name, String type) {
+    public Column(String name, String type, int number) {
         this.name = name;
         this.type = type;
         this.isIndex = false;
+        this.number = number;
         switch (this.type) {
             case TypeDB.DOUBLE:
                 this.extractFromGroup = group -> {
-                    if (group.getFieldRepetitionCount(this.name) != 0)
-                        return (float) group.getDouble(this.name,0);
+                    if (group.getFieldRepetitionCount(this.number) != 0)
+                        return (float) group.getDouble(this.number,0);
                     return null;
                 };
                 this.parseJson = object -> ((BigDecimal) object).floatValue();
                 break;
             case TypeDB.STRING:
                 this.extractFromGroup = (group) -> {
-                    if (group.getFieldRepetitionCount(this.name) != 0)
-                        return group.getString(this.name,0);
+                    if (group.getFieldRepetitionCount(this.number) != 0)
+                        return group.getString(this.number,0);
                     return null;
                 };
                 this.parseJson = object ->  object;
                 break;
             case TypeDB.LONG:
                 this.extractFromGroup = (group) -> {
-                    if (group.getFieldRepetitionCount(this.name) != 0)
-                        return group.getLong(this.name,0);
+                    if (group.getFieldRepetitionCount(this.number) != 0)
+                        return group.getLong(this.number,0);
                     return null;
                 };
                 this.parseJson = object -> ((BigDecimal) object).longValue();
                 break;
             case TypeDB.INT:
                 this.extractFromGroup = (group) -> {
-                    if (group.getFieldRepetitionCount(this.name) != 0)
-                        return group.getInteger(this.name,0);
+                    if (group.getFieldRepetitionCount(this.number) != 0)
+                        return group.getInteger(this.number,0);
                     return null;
                 };
                 this.parseJson = object -> ((BigDecimal) object).intValue();
                 break;
             case TypeDB.BYTE:
                 this.extractFromGroup = (group) -> {
-                    if (group.getFieldRepetitionCount(this.name) != 0)
-                        return (byte) group.getInteger(this.name, 0);
+                    if (group.getFieldRepetitionCount(this.number) != 0)
+                        return (byte) group.getInteger(this.number, 0);
                     return null;
                 };
                 this.parseJson = object -> ((BigDecimal) object).byteValue();
@@ -102,5 +104,13 @@ public class Column {
 
     public void setIndex(Index index) {
         this.index = index;
+    }
+
+    public int getNumber() {
+        return number;
+    }
+
+    public void setNumber(int number) {
+        this.number = number;
     }
 }

@@ -13,11 +13,7 @@ import java.util.List;
 public class Utils {
 
     public static List<Object> extractListFromGroup(Group group, List<Column> columns) {
-        List<Object> list = new ArrayList<>(columns.size());
-        for (Column column : columns) {
-           list.add(column.extractFromGroup.apply(group));
-        }
-        return list;
+        return columns.stream().map( column -> column.extractFromGroup.apply(group) ).toList();
     }
 
     public static List<Object> castRow(List<Object> args, List<Column> columns) {

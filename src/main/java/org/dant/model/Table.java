@@ -8,6 +8,7 @@ import org.dant.index.IndexFactory;
 import org.dant.select.ColumnSelected;
 import org.dant.select.Condition;
 import org.dant.select.SelectMethod;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -29,8 +30,9 @@ public class Table {
     public Table(String name, List<Column> columns) {
         this.name = name;
         this.columns = new ArrayList<>(columns.size());
+        int i=0;
         for(Column column : columns) {
-            this.columns.add( new Column(column.getName(), column.getType()) );
+            this.columns.add( new Column(column.getName(), column.getType(),i++) );
         }
         indexedColumns = new ArrayList<>();
         rows = new ArrayList<>();
@@ -300,13 +302,13 @@ public class Table {
     }
 
     public void createIndexedColumns(List<List<Object>> rows) {
-        int tailleEchantillon = 20000;
-        if (rows.size() > tailleEchantillon) {
+        int sizeSample = 20000;
+        if (rows.size() > sizeSample) {
             List<Set<Object>> echantillon = new ArrayList<>(this.columns.size());
             for (Column column : this.columns) {
                 echantillon.add(new HashSet<>());
             }
-            for (List<Object> list : rows.subList(0,tailleEchantillon)) {
+            for (List<Object> list : rows.subList(0,sizeSample)) {
                 for (int j = 0; j < columns.size(); j++) {
                     Object obj = list.get(j);
                     if (obj != null)
@@ -315,7 +317,7 @@ public class Table {
             }
             List<Integer> cardinalite = echantillon.stream().map(Set::size).collect(Collectors.toList());
             for(int i=0; i<cardinalite.size(); i++) {
-                if(cardinalite.get(i) < tailleEchantillon*0.1) {
+                if(cardinalite.get(i) < sizeSample*0.1) {
                     columns.get(i).setIsIndex(true);
                     columns.get(i).setIndex(IndexFactory.create());
                     indexedColumns.add(columns.get(i));

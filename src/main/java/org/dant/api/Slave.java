@@ -45,8 +45,9 @@ public class Slave {
     @Path("/select")
     @Consumes(MediaType.APPLICATION_JSON)
     public List<List<Object>> getContent(SelectMethod selectMethod) {
-        System.out.println("Select "+selectMethod.getSELECT()+", FROM "+selectMethod.getFROM());
-        return DataBase.get().get(selectMethod.getFROM()).select(selectMethod);
+        System.out.println("Select FROM "+selectMethod.getFROM());
+        List<List<Object>> res = DataBase.get().get(selectMethod.getFROM()).select(selectMethod);
+        return res;
     }
 
     @POST
@@ -71,37 +72,6 @@ public class Slave {
             throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
         table.addAllRows(listArgs.parallelStream().map( list -> Utils.castRow(list,table.getColumns())).collect(Collectors.toList()));
         System.out.println(listArgs.size()+" rows added !");
-    }
-
-    @POST
-    @Path("/parquet/{tableName}/{pos}")
-    @Consumes(MediaType.MULTIPART_FORM_DATA)
-    public void readParquet(@RestPath String tableName,@RestPath int pos, File file) {
-        Configuration conf = new Configuration();
-        Table table = DataBase.get().get(tableName);
-        if (table == null)
-            return;
-        org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path(file.getAbsolutePath());
-        try (ParquetFileReader parquetFileReader = new ParquetFileReader(HadoopInputFile.fromPath(path, new Configuration()), ParquetReadOptions.builder().build())) {
-            ParquetMetadata footer = parquetFileReader.getFooter();
-            MessageType schema = footer.getFileMetaData().getSchema();
-            PageReadStore pages;
-
-            while ((pages = parquetFileReader.readNextRowGroup()) != null) {
-                long rows = 3000000;//pages.getRowCount();
-                RecordReader<Group> recordReader = new ColumnIOFactory().getColumnIO(schema).getRecordReader(pages, new GroupRecordConverter(schema));
-                for(long row=pos*(rows/3); row<(pos+1)*(rows/3); row++){
-                    recordReader.read();
-                }
-                for(long row=0; row<rows/3;row++) {
-                    Group group = recordReader.read();
-                    table.addRow(Utils.extractListFromGroup(group, table.getColumns()));
-                }
-            }
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-        System.out.println("FINI !");
     }
 
 }

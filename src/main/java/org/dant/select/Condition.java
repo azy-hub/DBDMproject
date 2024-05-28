@@ -6,7 +6,7 @@ import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.List;
 
-public class Condition implements Serializable {
+public class Condition {
 
     private String nameColumn;
     private String op;

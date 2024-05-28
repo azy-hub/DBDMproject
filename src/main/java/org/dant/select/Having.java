@@ -5,7 +5,7 @@ import org.dant.commons.TypeDB;
 import java.io.Serializable;
 import java.util.List;
 
-public class Having implements Serializable {
+public class Having {
 
     private ColumnSelected aggregate;
 
