@@ -5,15 +5,22 @@ import org.apache.parquet.example.data.Group;
 import org.dant.model.Column;
 import org.dant.commons.TypeDB;
 import org.dant.select.Condition;
+import org.wildfly.common.lock.SpinLock;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class Utils {
 
     public static List<Object> extractListFromGroup(Group group, List<Column> columns) {
-        return columns.stream().map( column -> column.extractFromGroup.apply(group) ).toList();
+        List<Object> list = new ArrayList<>(columns.size());
+        for(Column column : columns) {
+            list.add(column.extractFromGroup.apply(group));
+        }
+        return list;
     }
 
     public static List<Object> castRow(List<Object> args, List<Column> columns) {

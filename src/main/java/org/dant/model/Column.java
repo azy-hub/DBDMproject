@@ -18,8 +18,6 @@ public class Column {
     private Index index;
     private int number;
 
-
-
     public Column(){
     }
 

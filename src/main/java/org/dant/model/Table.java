@@ -47,16 +47,20 @@ public class Table {
         if(this.rows.isEmpty()) {
             createIndexedColumns(lignes);
         }
-        int nbThread = 4;
+        int nbThread = 5;
         final int[] rowsIdx = {rows.size()};
         List<Thread> threadList = new ArrayList<>(nbThread);
         for(int i = 0; i<nbThread; i++) {
-            int finalI = i;
+            int finalI1 = i;
             Runnable runnable = () -> {
+                final int finalI = finalI1;
                 int index = rowsIdx[0];
                 for(List<Object> row : lignes) {
-                    for(int idx=finalI*(indexedColumns.size()); idx<(finalI+1)*(indexedColumns.size()/nbThread); idx++) {
-                        indexedColumns.get(idx).getIndex().addIndex(row.get(columns.indexOf(indexedColumns.get(idx))), index );
+                    for(int idx=finalI*(indexedColumns.size()/nbThread); idx<(finalI+1)*(indexedColumns.size()/nbThread); idx++) {
+                        Object object = row.get(indexedColumns.get(idx).getNumber());
+                        if(object != null) {
+                            indexedColumns.get(idx).getIndex().addIndex(object, index);
+                        }
                     }
                     index++;
                 }
@@ -317,7 +321,7 @@ public class Table {
             }
             List<Integer> cardinalite = echantillon.stream().map(Set::size).collect(Collectors.toList());
             for(int i=0; i<cardinalite.size(); i++) {
-                if(cardinalite.get(i) < sizeSample*0.1) {
+                if(cardinalite.get(i) < sizeSample*0.05) {
                     columns.get(i).setIsIndex(true);
                     columns.get(i).setIndex(IndexFactory.create());
                     indexedColumns.add(columns.get(i));
