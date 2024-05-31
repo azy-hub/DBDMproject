@@ -8,7 +8,6 @@ import org.dant.index.IndexFactory;
 import org.dant.select.ColumnSelected;
 import org.dant.select.Condition;
 import org.dant.select.SelectMethod;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -19,8 +18,8 @@ public class Table {
     private String name;
     private List<Column> columns;
     private List<Column> indexedColumns;
-
-    private List<List<Object>> rows;
+    private ArrayList<List<Object>> rows;
+    private boolean isIndexed;
 
     private final SpinLock lockAdd = new SpinLock();
 
@@ -37,42 +36,51 @@ public class Table {
         indexedColumns = new ArrayList<>();
         rows = new ArrayList<>();
         DataBase.get().put(name,this);
+        this.isIndexed = false;
     }
 
     public void addRow(List<Object> row) {
+        int idx = rows.size();
         rows.add(row);
+        addOneRowToIndex(row, idx);
     }
 
     public void addAllRows(List<List<Object>> lignes) {
-        if(this.rows.isEmpty()) {
-            createIndexedColumns(lignes);
-        }
-        int nbThread = 4;
         final int[] rowsIdx = {rows.size()};
-        List<Thread> threadList = new ArrayList<>(nbThread);
-        for(int i = 0; i<nbThread; i++) {
-            int finalI = i;
-            Runnable runnable = () -> {
-                int index = rowsIdx[0];
-                for(List<Object> row : lignes) {
-                    for(int idx=finalI*(indexedColumns.size()); idx<(finalI+1)*(indexedColumns.size()/nbThread); idx++) {
-                        indexedColumns.get(idx).getIndex().addIndex(row.get(columns.indexOf(indexedColumns.get(idx))), index );
-                    }
-                    index++;
+        Thread thread = new Thread(() -> {
+            int index = rowsIdx[0];
+            for(List<Object> row : lignes) {
+                for (Column indexedColumn : indexedColumns) {
+                    Object object = row.get(indexedColumn.getNumber());
+                    if (object != null)
+                        indexedColumn.getIndex().addIndex(object, index);
                 }
-            };
-            Thread thread = new Thread(runnable);
-            threadList.add(thread);
-            thread.start();
+                index++;
+            }
+        });
+        thread.start();
+        rows.addAll(rows);
+        try {
+            thread.join();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
-        lockAdd.lock();
-        rows.addAll(lignes);
-        lockAdd.unlock();
-        for(Thread thread : threadList) {
-            try {
-                thread.join();
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+    }
+
+    public void addOneRowToIndex(List<Object> row, int index) {
+        for(Column column : indexedColumns) {
+            Object object = row.get(column.getNumber());
+            if (object !=null)
+                column.getIndex().addIndex(object, index);
+        }
+    }
+
+    public void addAllRowToIndex(List<List<Object>> rows, int indexStart) {
+        for(List<Object> row : rows) {
+            for (Column column : indexedColumns) {
+                Object object = row.get(column.getNumber());
+                if (object != null)
+                    column.getIndex().addIndex(object, indexStart++);
             }
         }
     }
@@ -96,6 +104,8 @@ public class Table {
     public void setIndexedColumns(List<Column> indexedColumns) {
         this.indexedColumns = indexedColumns;
     }
+
+    public boolean getIsIndexed() { return isIndexed; };
 
     public Column getColumnByName(String nameColumn) {
         for( Column column : columns) {
@@ -122,11 +132,11 @@ public class Table {
         this.columns = columns;
     }
 
-    public List<List<Object>> getRows() {
+    public ArrayList<List<Object>> getRows() {
         return rows;
     }
 
-    public void setRows(List<List<Object>> rows) {
+    public void setRows(ArrayList<List<Object>> rows) {
         this.rows = rows;
     }
 
@@ -301,14 +311,14 @@ public class Table {
         return res;
     }
 
-    public void createIndexedColumns(List<List<Object>> rows) {
-        int sizeSample = 20000;
-        if (rows.size() > sizeSample) {
+    public List<String> createIndexedColumns(List<List<Object>> rows) {
+        List<String> columnsName = new ArrayList<>();
+        if (!isIndexed) {
             List<Set<Object>> echantillon = new ArrayList<>(this.columns.size());
             for (Column column : this.columns) {
                 echantillon.add(new HashSet<>());
             }
-            for (List<Object> list : rows.subList(0,sizeSample)) {
+            for (List<Object> list : rows) {
                 for (int j = 0; j < columns.size(); j++) {
                     Object obj = list.get(j);
                     if (obj != null)
@@ -317,13 +327,16 @@ public class Table {
             }
             List<Integer> cardinalite = echantillon.stream().map(Set::size).collect(Collectors.toList());
             for(int i=0; i<cardinalite.size(); i++) {
-                if(cardinalite.get(i) < sizeSample*0.1) {
+                if(cardinalite.get(i) < rows.size()*0.05) {
                     columns.get(i).setIsIndex(true);
                     columns.get(i).setIndex(IndexFactory.create());
                     indexedColumns.add(columns.get(i));
+                    columnsName.add(columns.get(i).getName());
                 }
             }
+            isIndexed = true;
         }
+        return columnsName;
     }
 
     public boolean isConditionOnIndexedColumn(Condition condition, List<Column> columnList) {

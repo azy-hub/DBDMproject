@@ -1,6 +1,7 @@
 package org.dant.index;
 
 import gnu.trove.TIntArrayList;
+import org.dant.commons.SpinLock;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -9,6 +10,10 @@ import java.util.Set;
 public class HashIndex implements Index {
 
     private Map<Object, TIntArrayList> index;
+
+    private Object lastObjectAdded = null;
+    private TIntArrayList lastIndexList = null;
+    private SpinLock lock = new SpinLock();
 
     public HashIndex() {
         this.index = createMap();
@@ -28,13 +33,22 @@ public class HashIndex implements Index {
     }
 
     @Override
-    public void addIndex(Object object, int index) {
-        this.index.computeIfAbsent(object, k -> new TIntArrayList()).add(index);
+    public void addIndex(Object object, int indexValue) {
+        if(object.equals(lastObjectAdded)) {
+            lock.lock();
+            lastIndexList.add(indexValue);
+            lock.unlock();
+        } else {
+            lock.lock();
+            lastIndexList = this.index.computeIfAbsent(object, k -> new TIntArrayList());
+            lastIndexList.add(indexValue);
+            lock.unlock();
+            lastObjectAdded = object;
+        }
     }
 
     @Override
     public Set<Object> getKeys() {
         return this.index.keySet();
     }
-
 }

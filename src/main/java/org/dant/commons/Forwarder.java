@@ -19,18 +19,16 @@ public class Forwarder {
 
     static ObjectMapper objectMapper = new ObjectMapper();
 
-    public static String forwardRowsToTable(String ipAddress, String name, List<List<Object>> rows) {
+    public static void forwardRowsToTable(String ipAddress, String name, List<List<Object>> rows) {
         String url = "http://" + ipAddress + ":" + 8080 + "/slave/insertRows/" + name;
-        System.out.println("debut envoie");
-        // Convertissez la liste en JSON à l'aide de Jackson
+        System.out.println("debut d'envoie");
         String jsonBody;
         try {
             jsonBody = objectMapper.writeValueAsString(rows);
         } catch (JsonProcessingException e) {
             System.out.println("Erreur lors de la sérialisation des données en JSON");
-            return null;
+            return;
         }
-
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Content-Type", "application/json")
@@ -42,13 +40,10 @@ public class Forwarder {
         } catch (Exception e) {
             System.out.println("Erreur in forwarding row to other slave node");
         }
-        return "fini";
     }
 
     public static void forwardCreateTable(String ipAddress, String name, List<Column> columns) {
         String url = new StringBuilder().append("http://").append(ipAddress).append(":").append(8080).append("/slave/createTable/").append(name).toString();
-
-        // Convertissez la liste en JSON à l'aide de Jackson
         String jsonBody;
         try {
             jsonBody = objectMapper.writeValueAsString(columns);
@@ -62,7 +57,7 @@ public class Forwarder {
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
         try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString());
         } catch (Exception e) {
             System.out.println("url : "+url);
             System.out.println("Erreur lors de l'envoie de la diffusion de la requête create table. " + e.getMessage());
@@ -88,6 +83,28 @@ public class Forwarder {
             System.out.println("Erreur lors de l'envoie de la diffusion de la requête select. " + e.getMessage());
         }
         return null;
+    }
+
+    public static void forwardColumnsToIndex(String ipAddress, String name, List<String> columnsName) {
+        String url = new StringBuilder().append("http://").append(ipAddress).append(":").append(8080).append("/slave/indexTable/").append(name).toString();
+        String jsonBody;
+        try {
+            jsonBody = objectMapper.writeValueAsString(columnsName);
+        } catch (JsonProcessingException e) {
+            System.out.println("Erreur lors de la sérialisation des données en JSON");
+            return;
+        }
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                .build();
+        try {
+            httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString());
+        } catch (Exception e) {
+            System.out.println("url : "+url);
+            System.out.println("Erreur lors de l'envoie de la diffusion de la requête pour indexer les colonnes. " + e.getMessage());
+        }
     }
 
 }
