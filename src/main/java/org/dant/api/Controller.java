@@ -21,6 +21,7 @@ import org.apache.parquet.schema.MessageType;
 import org.dant.commons.Forwarder;
 import org.dant.commons.TypeDB;
 import org.dant.commons.Utils;
+import org.dant.compressor.CompressorFactory;
 import org.dant.model.*;
 import org.dant.select.ColumnSelected;
 import org.dant.select.Having;
@@ -32,15 +33,16 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.stream.Collectors;
 
 @Path("/v1")
 public class Controller {
 
-    @ConfigProperty(name = "address.ip.1")
-    String addressIp1;
-    @ConfigProperty(name = "address.ip.2")
-    String addressIp2;
+    @ConfigProperty(name = "ipaddress1")
+    String ipAddress1;
+    @ConfigProperty(name = "ipaddress2")
+    String ipAddress2;
+
+    ExecutorService executor = Executors.newCachedThreadPool();
 
     @POST
     @Path("/parquet/createTable/{tableName}")
@@ -100,64 +102,67 @@ public class Controller {
             while ((pages = parquetFileReader.readNextRowGroup()) != null ) {
                 int rows = (int) pages.getRowCount();
                 RecordReader<Group> recordReader = columnIO.getRecordReader(pages, groupRecordConverter);
-                /*ExecutorService executorService = Executors.newFixedThreadPool(2);
-                List<List<Object>> listOfList1 = new ArrayList<>(rows/3);
-                for (int row = 0; row < rows/3; row++) {
-                    listOfList1.add(Utils.extractListFromGroup(recordReader.read(), table.getColumns()));
-                }
-                Future<String> future1 = executorService.submit( () -> Forwarder.forwardRowsToTable(addressIp1,tableName, listOfList1));
-                List<List<Object>> listOfList2 = new ArrayList<>(rows/3);
-                for (int row = 0; row < rows/3; row++) {
-                    listOfList2.add(Utils.extractListFromGroup(recordReader.read(), table.getColumns()));
-                }
-                Future<String> future2 = executorService.submit( () -> Forwarder.forwardRowsToTable(addressIp2,tableName, listOfList2));*/
-                BlockingQueue<Group> queue = new ArrayBlockingQueue<>(rows);
-                List<List<Object>> listOfLists = new ArrayList<>();
-
-                ExecutorService executor = Executors.newFixedThreadPool(2);
-                Callable<Void> producer = () -> {
-                    try {
-                        for (int row = 0; row < rows; row++) {
-                            Group group = recordReader.read();
-                            queue.put(group);
-                        }
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                    }
-                    return null;
-                };
+                BlockingQueue<Group> queue = new ArrayBlockingQueue<>(rows/3);
                 Callable<Void> consumer = () -> {
-                    int i=0;
+                    int sizeSample = 20000;
+                    int sizeBloc = 100000;
+                    List<List<Object>> listOfLists = new ArrayList<>(rows/3);
                     try {
-                        while (i<rows) {
+                        int i=0;
+                        while (i<rows/3) {
                             Group group = queue.take();
                             listOfLists.add(Utils.extractListFromGroup(group, table.getColumns()));
-                            if( listOfLists.size() == 200000) {
-                                table.addAllRows(listOfLists);
+                            if (!table.getIsIndexed() && listOfLists.size() == sizeSample) {
+                                List<String> columnsName = table.createIndexedColumns(listOfLists);
+                                Forwarder.forwardColumnsToIndex(ipAddress1,tableName,columnsName);
+                                Forwarder.forwardColumnsToIndex(ipAddress2,tableName,columnsName);
+                            }
+                            if(listOfLists.size() == sizeBloc) {
+                                Forwarder.forwardRowsToTable(ipAddress1,tableName,listOfLists);
                                 listOfLists.clear();
                             }
                             i++;
                         }
                         if(!listOfLists.isEmpty()) {
-                            table.addAllRows(listOfLists);
+                            Forwarder.forwardRowsToTable(ipAddress1,tableName,listOfLists);
+                            listOfLists.clear();
+                        }
+                        i=0;
+                        while (i<rows/3) {
+                            Group group = queue.take();
+                            listOfLists.add(Utils.extractListFromGroup(group, table.getColumns()));
+                            if(listOfLists.size() == sizeBloc) {
+                                Forwarder.forwardRowsToTable(ipAddress2,tableName,listOfLists);
+                                listOfLists.clear();
+                            }
+                            i++;
+                        }
+                        if(!listOfLists.isEmpty()) {
+                            Forwarder.forwardRowsToTable(ipAddress2,tableName,listOfLists);
+                            listOfLists.clear();
+                        }
+                        i=0;
+                        table.getRows().ensureCapacity(table.getRows().size() + (rows/3));
+                        while (i<rows/3) {
+                            Group group = queue.take();
+                            table.addRow(Utils.extractListFromGroup(group, table.getColumns()));
+                            i++;
                         }
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
                     return null;
                 };
-                Future<Void> producerFuture = executor.submit(producer);
                 Future<Void> consumerFuture = executor.submit(consumer);
-                producerFuture.get();
+                try {
+                    for (int row = 0; row < rows; row++) {
+                        Group group = recordReader.read();
+                        queue.put(group);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
                 consumerFuture.get();
-                executor.shutdown();
-
-                // Ajouter toutes les lignes traitées à la table
-                //table.addAllRows(listOfLists);
-                /*listOfList3 = null;
-                executorService.shutdown();
-                future1.get();
-                future2.get();*/
             }
         } catch (Exception e) {
             throw new RuntimeException(e);
@@ -173,7 +178,7 @@ public class Controller {
         Map<String, Table> map = DataBase.get();
         for(String name : map.keySet()) {
             stringBuilder.append("\nTable ").append(name).append(" :\n");
-            stringBuilder.append("Number of lignes : ").append(map.get(name).getRows().size()).append("\n");
+            stringBuilder.append("Number of rows : ").append(map.get(name).getRows().size()).append("\n");
             List<Column> columns = map.get(name).getColumns();
             for( Column c : columns ) {
                 stringBuilder.append("Colonne : ").append(c.getName()).append(", Type : ").append(c.getType()).append("\n");
@@ -193,8 +198,8 @@ public class Controller {
             return "Columns are empty";
         else
             new Table(tableName, listColumns);
-        //Forwarder.forwardCreateTable(addressIp1,tableName,listColumns);
-        //Forwarder.forwardCreateTable(addressIp2,tableName,listColumns);
+        Forwarder.forwardCreateTable(ipAddress1,tableName,listColumns);
+        Forwarder.forwardCreateTable(ipAddress2,tableName,listColumns);
         return "Table created successfully";
     }
 
@@ -211,28 +216,26 @@ public class Controller {
         if (!table.checkSelectMethod(selectMethod))
             throw new NotFoundException("Params error");
 
-        /*ExecutorService executorService = Executors.newFixedThreadPool(2);
-        Future<List<List<Object>>> future1 = executorService.submit(new Callable<List<List<Object>>>() {
+        Future<List<List<Object>>> future1 = executor.submit(new Callable<List<List<Object>>>() {
             @Override
             public List<List<Object>> call() throws Exception {
-                return Forwarder.forwardSelect(addressIp1,selectMethod);
+                return Forwarder.forwardSelect(ipAddress1,selectMethod);
             }
         });
-        Future<List<List<Object>>> future2 = executorService.submit(new Callable<List<List<Object>>>() {
+        Future<List<List<Object>>> future2 = executor.submit(new Callable<List<List<Object>>>() {
             @Override
             public List<List<Object>> call() throws Exception {
-                return Forwarder.forwardSelect(addressIp2,selectMethod);
+                return Forwarder.forwardSelect(ipAddress2,selectMethod);
             }
-        });*/
+        });
 
         List<List<Object>> res = table.select(selectMethod);
-        /*try {
+        try {
             res.addAll(future1.get());
             res.addAll(future2.get());
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }
-        executorService.shutdown();*/
 
         List<ColumnSelected> aggregats = selectMethod.getAGGREGAT();
         if (aggregats != null && !aggregats.isEmpty()) {
@@ -329,11 +332,9 @@ public class Controller {
         if(table == null)
             throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
 
-        ExecutorService executorService = Executors.newFixedThreadPool(2);
-        executorService.submit( ()-> Forwarder.forwardRowsToTable(addressIp1,tableName,listArgs.subList(0, listArgs.size()/3)) );
-        executorService.submit( ()-> Forwarder.forwardRowsToTable(addressIp2,tableName,listArgs.subList(listArgs.size()/3, 2*listArgs.size()/3)) );
-        //table.addAllRows(listArgs.subList(2*listArgs.size()/3, listArgs.size()).parallelStream().map( list -> Utils.castRow(list, table.getColumns())).collect(Collectors.toList()));
-        executorService.shutdown();
+        executor.submit( ()-> Forwarder.forwardRowsToTable(ipAddress1,tableName,listArgs.subList(0, listArgs.size()/3)) );
+        executor.submit( ()-> Forwarder.forwardRowsToTable(ipAddress2,tableName,listArgs.subList(listArgs.size()/3, 2*listArgs.size()/3)) );
+        table.addAllRows(listArgs.subList(2*listArgs.size()/3, listArgs.size()).parallelStream().map( list -> Utils.castRow(list, table.getColumns())).toList());
         return "Rows added successfully !";
     }
 }

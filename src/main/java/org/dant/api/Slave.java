@@ -14,6 +14,7 @@ import org.apache.parquet.io.ColumnIOFactory;
 import org.apache.parquet.io.RecordReader;
 import org.apache.parquet.schema.MessageType;
 import org.dant.commons.Utils;
+import org.dant.index.IndexFactory;
 import org.dant.model.*;
 import org.dant.select.SelectMethod;
 import org.jboss.resteasy.reactive.RestPath;
@@ -47,6 +48,7 @@ public class Slave {
     public List<List<Object>> getContent(SelectMethod selectMethod) {
         System.out.println("Select FROM "+selectMethod.getFROM());
         List<List<Object>> res = DataBase.get().get(selectMethod.getFROM()).select(selectMethod);
+        System.out.println("Return "+res.size()+" rows !");
         return res;
     }
 
@@ -70,8 +72,25 @@ public class Slave {
         Table table = DataBase.get().get(tableName);
         if(table == null)
             throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
-        //table.addAllRows(listArgs.parallelStream().map( list -> Utils.castRow(list,table.getColumns())).collect(Collectors.toList()));
+        table.addAllRows(listArgs.parallelStream().map( list -> Utils.castRow(list,table.getColumns())).collect(Collectors.toList()));
         System.out.println(listArgs.size()+" rows added !");
+    }
+
+    @POST
+    @Path("/indexTable/{tableName}")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public void createIndexForTable(@RestPath String tableName, List<String> columnsName) {
+        System.out.println("Index received !");
+        Table table = DataBase.get().get(tableName);
+        if(table == null)
+            throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
+        for(Column column : table.getColumns()) {
+            if(columnsName.contains(column.getName())) {
+                column.setIsIndex(true);
+                column.setIndex(IndexFactory.create());
+                table.getIndexedColumns().add(column);
+            }
+        }
     }
 
 }

@@ -3,7 +3,7 @@ package org.dant.compressor;
 public class CompressorFactory {
 
     public enum Type {
-        BYTE_COMPRESSOR, NO_COMPRESSION;
+        BYTE_COMPRESSOR, NO_COMPRESSION, SNAPPY
     }
 
     private CompressorFactory() {
@@ -16,6 +16,9 @@ public class CompressorFactory {
                 return CompressorSingleton.compressor;
             case NO_COMPRESSION :
                 CompressorSingleton.compressor = new NoCompressor();
+                return CompressorSingleton.compressor;
+            case SNAPPY:
+                CompressorSingleton.compressor = new SnappyCompressor();
                 return CompressorSingleton.compressor;
             default :
                 return CompressorSingleton.compressor;
