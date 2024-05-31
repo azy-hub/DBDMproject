@@ -168,12 +168,12 @@ public class Table {
             return false;
         if ( getColumnsByNames(selectMethod.getSELECT()).isEmpty() )
             return false;
-        if ( selectMethod.getGROUPBY() != null && selectMethod.getGROUPBY().isEmpty() ) {
+        /*if ( selectMethod.getGROUPBY() != null && selectMethod.getGROUPBY().isEmpty() ) {
             if ( selectMethod.getSELECT().stream().noneMatch(columnName -> columnName.equals(selectMethod.getGROUPBY()) ) )
                 return false;
             if ( selectMethod.getSELECT().stream().filter( columnSelected -> columnSelected.getTypeAggregat() != null ).anyMatch( aggregat -> aggregat.getNameColumn().equals(selectMethod.getGROUPBY()) ) )
                 return false;
-        }
+        }*/
         return true;
     }
 
@@ -211,13 +211,13 @@ public class Table {
         // Vérifie si un groupBy et un aggrégat ont été demandé dans la requete SELECT
         if ( aggregats != null && !aggregats.isEmpty()) {
             if ( selectMethod.getGROUPBY() != null && !selectMethod.getGROUPBY().isEmpty()) {
-                int idxOfColumnGroupBy = Utils.getIdxColumnByName(columns, selectMethod.getGROUPBY()); // Trouve l'index de la colonne à regrouper parmis les colonnes selectionnées
+                //int idxOfColumnGroupBy = Utils.getIdxColumnByName(columns, selectMethod.getGROUPBY()); // Trouve l'index de la colonne à regrouper parmis les colonnes selectionnées
+                List<Integer> idxOfColumnsGroupBy = selectMethod.getGROUPBY().stream().map( nameColumn -> Utils.getIdxColumnByName(columns, nameColumn)).toList();
                 // si le groupBy est appliqué sur un index et que aucune condition de filtre n'a été appliqué alors on peut directement récupérer les valeurs du groupBy par l'index
-                if ( columnList.get(idxOfColumnGroupBy).isIndex() && nbConditions == 0) {
-
-                    List<List<Object>> groupby = new ArrayList<>( columns.get(idxOfColumnGroupBy).getIndex().getKeys().size() );
-                    columns.get(idxOfColumnGroupBy).getIndex().getKeys().parallelStream().forEach(key -> {
-                        TIntArrayList idxRows = columns.get(idxOfColumnGroupBy).getIndex().getIndexFromValue(key);
+                if ( idxOfColumnsGroupBy.size() == 1 && columns.get(idxOfColumnsGroupBy.get(0)).isIndex() && nbConditions == 0) {
+                    List<List<Object>> groupby = new ArrayList<>( columns.get(idxOfColumnsGroupBy.get(0)).getIndex().getKeys().size() );
+                    columns.get(idxOfColumnsGroupBy.get(0)).getIndex().getKeys().parallelStream().forEach(key -> {
+                        TIntArrayList idxRows = columns.get(idxOfColumnsGroupBy.get(0)).getIndex().getIndexFromValue(key);
                         List<List<Object>> resultat = new ArrayList<>(idxRows.size());
                         for (int idx = 0; idx < idxRows.size(); idx++) {
                             resultat.add(getRows().get(idxRows.get(idx)));
@@ -229,11 +229,11 @@ public class Table {
                     res = groupby;
 
                 } else {
-                    Map<Object, List<List<Object>>> groupBy = new HashMap<>();
+                    Map<List<Object>, List<List<Object>>> groupBy = new HashMap<>();
                     // Parcours chaque ligne et regroupe chaque valeur avec les lignes qui lui correspondent
                     SpinLock groupByLock = new SpinLock();
                     res.parallelStream().forEach(list -> {
-                        Object object = list.get(idxOfColumnGroupBy);
+                        List<Object> object = idxOfColumnsGroupBy.stream().map(list::get).toList();
                         groupByLock.lock();
                         groupBy.computeIfAbsent(object, k -> new ArrayList<>()).add(list);
                         groupByLock.unlock();
