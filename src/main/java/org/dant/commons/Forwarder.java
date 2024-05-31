@@ -21,7 +21,6 @@ public class Forwarder {
 
     public static void forwardRowsToTable(String ipAddress, String name, List<List<Object>> rows) {
         String url = "http://" + ipAddress + ":" + 8080 + "/slave/insertRows/" + name;
-        System.out.println("debut d'envoie");
         String jsonBody;
         try {
             jsonBody = objectMapper.writeValueAsString(rows);
@@ -34,9 +33,8 @@ public class Forwarder {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
-        System.out.println("Envoie à :" + ipAddress+ "avec une taille de : "+jsonBody.length());
         try {
-            httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding());
+           // httpClient.sendAsync(request, HttpResponse.BodyHandlers.discarding());
         } catch (Exception e) {
             System.out.println("Erreur in forwarding row to other slave node");
         }
@@ -57,7 +55,7 @@ public class Forwarder {
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
         try {
-            httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString());
+           // httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString());
         } catch (Exception e) {
             System.out.println("url : "+url);
             System.out.println("Erreur lors de l'envoie de la diffusion de la requête create table. " + e.getMessage());
@@ -76,8 +74,8 @@ public class Forwarder {
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
         try {
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            return objectMapper.readValue(response.body(), new TypeReference<List<List<Object>>>() {});
+            //HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            //return objectMapper.readValue(response.body(), new TypeReference<List<List<Object>>>() {});
 
         } catch (Exception e) {
             System.out.println("Erreur lors de l'envoie de la diffusion de la requête select. " + e.getMessage());
@@ -100,7 +98,7 @@ public class Forwarder {
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
         try {
-            httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString());
+           // httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString());
         } catch (Exception e) {
             System.out.println("url : "+url);
             System.out.println("Erreur lors de l'envoie de la diffusion de la requête pour indexer les colonnes. " + e.getMessage());

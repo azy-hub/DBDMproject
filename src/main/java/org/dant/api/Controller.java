@@ -18,15 +18,15 @@ import org.apache.parquet.io.RecordReader;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.parquet.schema.MessageType;
-import org.dant.commons.Forwarder;
 import org.dant.commons.TypeDB;
 import org.dant.commons.Utils;
-import org.dant.compressor.CompressorFactory;
 import org.dant.model.*;
+import org.dant.rest.ForwardSlave1;
+import org.dant.rest.ForwardSlave2;
 import org.dant.select.ColumnSelected;
 import org.dant.select.Having;
 import org.dant.select.SelectMethod;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.eclipse.microprofile.rest.client.inject.RestClient;
 import org.jboss.resteasy.reactive.RestPath;
 import java.io.File;
 import java.io.IOException;
@@ -37,10 +37,10 @@ import java.util.concurrent.*;
 @Path("/v1")
 public class Controller {
 
-    @ConfigProperty(name = "ipaddress1")
-    String ipAddress1;
-    @ConfigProperty(name = "ipaddress2")
-    String ipAddress2;
+    @RestClient
+    ForwardSlave1 forwardSlave1;
+    @RestClient
+    ForwardSlave2 forwardSlave2;
 
     ExecutorService executor = Executors.newCachedThreadPool();
 
@@ -102,10 +102,10 @@ public class Controller {
             while ((pages = parquetFileReader.readNextRowGroup()) != null ) {
                 int rows = (int) pages.getRowCount();
                 RecordReader<Group> recordReader = columnIO.getRecordReader(pages, groupRecordConverter);
-                BlockingQueue<Group> queue = new ArrayBlockingQueue<>(rows/3);
+                int sizeBloc = 10000;
+                BlockingQueue<Group> queue = new ArrayBlockingQueue<>(sizeBloc);
                 Callable<Void> consumer = () -> {
-                    int sizeSample = 20000;
-                    int sizeBloc = 100000;
+                    int sizeSample = 10000;
                     List<List<Object>> listOfLists = new ArrayList<>(rows/3);
                     try {
                         int i=0;
@@ -114,17 +114,17 @@ public class Controller {
                             listOfLists.add(Utils.extractListFromGroup(group, table.getColumns()));
                             if (!table.getIsIndexed() && listOfLists.size() == sizeSample) {
                                 List<String> columnsName = table.createIndexedColumns(listOfLists);
-                                Forwarder.forwardColumnsToIndex(ipAddress1,tableName,columnsName);
-                                Forwarder.forwardColumnsToIndex(ipAddress2,tableName,columnsName);
+                                forwardSlave1.createIndexForTable(tableName,columnsName);
+                                forwardSlave2.createIndexForTable(tableName,columnsName);
                             }
                             if(listOfLists.size() == sizeBloc) {
-                                Forwarder.forwardRowsToTable(ipAddress1,tableName,listOfLists);
+                                forwardSlave1.forwardRowsToTable(tableName,listOfLists);
                                 listOfLists.clear();
                             }
                             i++;
                         }
                         if(!listOfLists.isEmpty()) {
-                            Forwarder.forwardRowsToTable(ipAddress1,tableName,listOfLists);
+                            forwardSlave1.forwardRowsToTable(tableName,listOfLists);
                             listOfLists.clear();
                         }
                         i=0;
@@ -132,13 +132,13 @@ public class Controller {
                             Group group = queue.take();
                             listOfLists.add(Utils.extractListFromGroup(group, table.getColumns()));
                             if(listOfLists.size() == sizeBloc) {
-                                Forwarder.forwardRowsToTable(ipAddress2,tableName,listOfLists);
+                                forwardSlave2.forwardRowsToTable(tableName,listOfLists);
                                 listOfLists.clear();
                             }
                             i++;
                         }
                         if(!listOfLists.isEmpty()) {
-                            Forwarder.forwardRowsToTable(ipAddress2,tableName,listOfLists);
+                            forwardSlave2.forwardRowsToTable(tableName,listOfLists);
                             listOfLists.clear();
                         }
                         i=0;
@@ -198,8 +198,8 @@ public class Controller {
             return "Columns are empty";
         else
             new Table(tableName, listColumns);
-        Forwarder.forwardCreateTable(ipAddress1,tableName,listColumns);
-        Forwarder.forwardCreateTable(ipAddress2,tableName,listColumns);
+        forwardSlave1.createTable(tableName,listColumns);
+        forwardSlave2.createTable(tableName,listColumns);
         return "Table created successfully";
     }
 
@@ -216,26 +216,13 @@ public class Controller {
         if (!table.checkSelectMethod(selectMethod))
             throw new NotFoundException("Params error");
 
-        Future<List<List<Object>>> future1 = executor.submit(new Callable<List<List<Object>>>() {
-            @Override
-            public List<List<Object>> call() throws Exception {
-                return Forwarder.forwardSelect(ipAddress1,selectMethod);
-            }
-        });
-        Future<List<List<Object>>> future2 = executor.submit(new Callable<List<List<Object>>>() {
-            @Override
-            public List<List<Object>> call() throws Exception {
-                return Forwarder.forwardSelect(ipAddress2,selectMethod);
-            }
-        });
+        CompletionStage<List<List<Object>>> future1 = forwardSlave1.getContent(selectMethod);
+        CompletionStage<List<List<Object>>> future2 = forwardSlave2.getContent(selectMethod);
 
         List<List<Object>> res = table.select(selectMethod);
-        try {
-            res.addAll(future1.get());
-            res.addAll(future2.get());
-        } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException(e);
-        }
+
+        res.addAll(future1.toCompletableFuture().join());
+        res.addAll(future2.toCompletableFuture().join());
 
         List<ColumnSelected> aggregats = selectMethod.getAGGREGAT();
         if (aggregats != null && !aggregats.isEmpty()) {
@@ -311,19 +298,6 @@ public class Controller {
     }
 
     @POST
-    @Path("/insertOneRow/{name}")
-    @Consumes(MediaType.APPLICATION_JSON)
-    public void insertOneRow(@RestPath String name, List<Object> args) {
-        Table table = DataBase.get().get(name);
-        if(table == null)
-            throw new NotFoundException("La table avec le nom " + name + " n'a pas été trouvée.");
-        if(args.size() != table.getColumns().size()) {
-            throw new IllegalArgumentException("Nombre d'argument incorrect.");
-        }
-        table.addRow(args);
-    }
-
-    @POST
     @Path("/insertRows/{tableName}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
@@ -332,9 +306,10 @@ public class Controller {
         if(table == null)
             throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
 
-        executor.submit( ()-> Forwarder.forwardRowsToTable(ipAddress1,tableName,listArgs.subList(0, listArgs.size()/3)) );
-        executor.submit( ()-> Forwarder.forwardRowsToTable(ipAddress2,tableName,listArgs.subList(listArgs.size()/3, 2*listArgs.size()/3)) );
+        forwardSlave1.forwardRowsToTable(tableName,listArgs.subList(0, listArgs.size()/3));
+        forwardSlave2.forwardRowsToTable(tableName,listArgs.subList(listArgs.size()/3, 2*listArgs.size()/3));
         table.addAllRows(listArgs.subList(2*listArgs.size()/3, listArgs.size()).parallelStream().map( list -> Utils.castRow(list, table.getColumns())).toList());
         return "Rows added successfully !";
     }
+
 }
