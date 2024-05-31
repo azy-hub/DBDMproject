@@ -31,6 +31,7 @@ import org.jboss.resteasy.reactive.RestPath;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -310,6 +311,64 @@ public class Controller {
         forwardSlave2.forwardRowsToTable(tableName,listArgs.subList(listArgs.size()/3, 2*listArgs.size()/3));
         table.addAllRows(listArgs.subList(2*listArgs.size()/3, listArgs.size()).parallelStream().map( list -> Utils.castRow(list, table.getColumns())).toList());
         return "Rows added successfully !";
+    }
+
+    @POST
+    @Path("/deleteColumn")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public String deleteColumn(@QueryParam("tableName") String tableName, @QueryParam("nameColumn") String nameColumn) {
+        Table table = DataBase.get().get(tableName);
+        if(table == null)
+            return ("La table '" + tableName + "' n'a pas été trouvée.");
+        forwardSlave1.deleteColumn(tableName, nameColumn);
+        forwardSlave2.deleteColumn(tableName, nameColumn);
+        boolean deleted = table.deleteColumn(nameColumn);
+        return deleted ? "Colonne '"+nameColumn+"' a bien été supprimé !" : "La colonne '"+nameColumn+"' n'a pas été trouvé.";
+    }
+
+    @POST
+    @Path("/addColumn")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public String addColumn(@QueryParam("tableName") String tableName, @QueryParam("nameColumn") String nameColumn,
+                               @QueryParam("type") String type, @QueryParam("defaultValue") String defaultValue) {
+        Table table = DataBase.get().get(tableName);
+        if(table == null)
+            return ("La table '" + tableName + "' n'a pas été trouvée.");
+        if( !List.of(TypeDB.STRING, TypeDB.LONG, TypeDB.INT, TypeDB.DOUBLE, TypeDB.SHORT, TypeDB.BYTE).contains(type))
+            return "Type invalide";
+        Object val = null;
+        if (defaultValue != null) {
+            try {
+                switch (type) {
+                    case TypeDB.DOUBLE:
+                        val = Double.parseDouble(defaultValue);
+                        break;
+                    case TypeDB.STRING:
+                        val = defaultValue;
+                        break;
+                    case TypeDB.LONG:
+                        val = Long.parseLong(defaultValue);
+                        break;
+                    case TypeDB.INT:
+                        val = Integer.parseInt(defaultValue);
+                        break;
+                    case TypeDB.SHORT:
+                        val = Short.parseShort(defaultValue);
+                        break;
+                    case TypeDB.BYTE:
+                        val = Byte.parseByte(defaultValue);
+                        break;
+                    default:
+                        return "Type non pris en charge";
+                }
+            } catch (ClassCastException | ArithmeticException e) {
+                return "La valeur fournie ne correspond pas au type " + type;
+            }
+        }
+        forwardSlave1.addColumn(tableName, nameColumn, type, defaultValue);
+        forwardSlave2.addColumn(tableName, nameColumn, type, defaultValue);
+        table.addNewColumn(nameColumn, type, val);
+        return "Column added !";
     }
 
 }
