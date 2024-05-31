@@ -13,13 +13,14 @@ import org.apache.parquet.hadoop.util.HadoopInputFile;
 import org.apache.parquet.io.ColumnIOFactory;
 import org.apache.parquet.io.RecordReader;
 import org.apache.parquet.schema.MessageType;
+import org.dant.commons.TypeDB;
 import org.dant.commons.Utils;
 import org.dant.index.IndexFactory;
 import org.dant.model.*;
 import org.dant.select.SelectMethod;
-import org.jboss.resteasy.reactive.RestPath;
 
 import java.io.File;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -29,7 +30,7 @@ public class Slave {
     @POST
     @Path("/createTable/{tableName}")
     @Consumes(MediaType.APPLICATION_JSON)
-    public void createTable(@RestPath String tableName, List<Column> listColumns) {
+    public void createTable(@PathParam("tableName") String tableName, List<Column> listColumns) {
         if (DataBase.get().containsKey(tableName)) {
             System.out.println( "Table already exists with name : "+tableName);
             return;
@@ -53,21 +54,9 @@ public class Slave {
     }
 
     @POST
-    @Path("/insertOneRow/{name}")
-    @Consumes(MediaType.APPLICATION_JSON)
-    public void insertOneRow(@RestPath String name, List<Object> args) {
-        Table table = DataBase.get().get(name);
-        if(table == null)
-            throw new NotFoundException("La table avec le nom " + name + " n'a pas été trouvée.");
-        if(args.size() != table.getColumns().size())
-            throw new NotFoundException("Nombre d'argument incorrect.");
-        table.addRow(args);
-    }
-
-    @POST
     @Path("/insertRows/{tableName}")
     @Consumes(MediaType.APPLICATION_JSON)
-    public void insertRows(@RestPath String tableName, List<List<Object>> listArgs) {
+    public void insertRows(@PathParam("tableName") String tableName, List<List<Object>> listArgs) {
         System.out.println("Rows received !");
         Table table = DataBase.get().get(tableName);
         if(table == null)
@@ -79,7 +68,7 @@ public class Slave {
     @POST
     @Path("/indexTable/{tableName}")
     @Consumes(MediaType.APPLICATION_JSON)
-    public void createIndexForTable(@RestPath String tableName, List<String> columnsName) {
+    public void createIndexForTable(@PathParam("tableName") String tableName, List<String> columnsName) {
         System.out.println("Index received !");
         Table table = DataBase.get().get(tableName);
         if(table == null)
@@ -91,6 +80,59 @@ public class Slave {
                 table.getIndexedColumns().add(column);
             }
         }
+    }
+
+    @POST
+    @Path("/deleteColumn")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public boolean deleteColumn(@QueryParam("tableName") String tableName, @QueryParam("nameColumn") String nameColumn) {
+        Table table = DataBase.get().get(tableName);
+        if(table == null)
+            return false;
+        boolean deleted = table.deleteColumn(nameColumn);
+        return deleted;
+    }
+
+    @POST
+    @Path("/addColumn")
+    @Consumes(MediaType.APPLICATION_JSON)
+    public void addColumn(@QueryParam("tableName") String tableName, @QueryParam("nameColumn") String nameColumn,
+                            @QueryParam("type") String type, @QueryParam("defaultValue") String defaultValue) {
+        Table table = DataBase.get().get(tableName);
+        if(table == null)
+            return;
+        if( !List.of(TypeDB.STRING, TypeDB.LONG, TypeDB.INT, TypeDB.DOUBLE, TypeDB.SHORT, TypeDB.BYTE).contains(type))
+            return;
+        Object val = null;
+        if (defaultValue != null) {
+            try {
+                switch (type) {
+                    case TypeDB.DOUBLE:
+                        val = Double.parseDouble(defaultValue);
+                        break;
+                    case TypeDB.STRING:
+                        val = defaultValue;
+                        break;
+                    case TypeDB.LONG:
+                        val = Long.parseLong(defaultValue);
+                        break;
+                    case TypeDB.INT:
+                        val = Integer.parseInt(defaultValue);
+                        break;
+                    case TypeDB.SHORT:
+                        val = Short.parseShort(defaultValue);
+                        break;
+                    case TypeDB.BYTE:
+                        val = Byte.parseByte(defaultValue);
+                        break;
+                    default:
+                        return;
+                }
+            } catch (ClassCastException | ArithmeticException e) {
+                return;
+            }
+        }
+        table.addNewColumn(nameColumn, type, val);
     }
 
 }

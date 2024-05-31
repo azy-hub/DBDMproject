@@ -343,4 +343,27 @@ public class Table {
         return columnList.stream().anyMatch( column -> column.isIndex() && column.getName().equals(condition.getNameColumn()) && condition.getOp().equals("=") );
     }
 
+    public boolean deleteColumn(String nameColumn) {
+        for(Column column : columns) {
+            if(column.getName().equals(nameColumn)) {
+                int idx = column.getNumber();
+                for(List<Object> row : rows) {
+                    row.remove(idx);
+                }
+                for(int i=idx+1; i<columns.size(); i++) {
+                    columns.get(i).setNumber( columns.get(i).getNumber() - 1 );
+                }
+                columns.remove(idx);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void addNewColumn(String nameColumn, String type, Object val) {
+        columns.add(new Column(nameColumn, type, columns.size()));
+        for(List<Object> row : rows) {
+            row.add(val);
+        }
+    }
 }

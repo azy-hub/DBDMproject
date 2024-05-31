@@ -38,7 +38,7 @@ public class Column {
             case TypeDB.STRING:
                 this.extractFromGroup = (group) -> {
                     if (group.getFieldRepetitionCount(this.number) != 0)
-                        return group.getString(this.number,0);
+                        return group.getBinary(this.number,0).toStringUsingUTF8();
                     return null;
                 };
                 this.parseJson = object ->  object;
