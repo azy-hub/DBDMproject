@@ -13,14 +13,14 @@ public class SelectMethod {
     private List<ColumnSelected> SELECT;
     private String FROM;
     private List<Condition> WHERE;
-    private String GROUPBY;
+    private List<String> GROUPBY;
 
     private List<Having> HAVING;
 
     public SelectMethod() {
     }
 
-    public SelectMethod(List<ColumnSelected> SELECT, String FROM, List<Condition> WHERE, String GROUPBY, List<Having> HAVING) {
+    public SelectMethod(List<ColumnSelected> SELECT, String FROM, List<Condition> WHERE, List<String> GROUPBY, List<Having> HAVING) {
         this.FROM = FROM;
         this.WHERE = WHERE;
         this.GROUPBY = GROUPBY;
@@ -52,11 +52,11 @@ public class SelectMethod {
         this.WHERE = WHERE;
     }
 
-    public String getGROUPBY() {
+    public List<String> getGROUPBY() {
         return GROUPBY;
     }
 
-    public void setGROUPBY(String GROUPBY) {
+    public void setGROUPBY(List<String> GROUPBY) {
         this.GROUPBY = GROUPBY;
     }
 
