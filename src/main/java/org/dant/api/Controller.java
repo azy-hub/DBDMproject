@@ -101,7 +101,7 @@ public class Controller {
         try (ParquetFileReader parquetFileReader = new ParquetFileReader( conf, path, footer)) {
             PageReadStore pages = null;
             while ((pages = parquetFileReader.readNextRowGroup()) != null ) {
-                int rows = 1000000;//(int) pages.getRowCount();
+                int rows = (int) pages.getRowCount();
                 RecordReader<Group> recordReader = columnIO.getRecordReader(pages, groupRecordConverter);
                 int sizeBloc = 10000;
                 BlockingQueue<Group> queue = new ArrayBlockingQueue<>(sizeBloc);
@@ -199,8 +199,8 @@ public class Controller {
             return "Columns are empty";
         else
             new Table(tableName, listColumns);
-        //forwardSlave1.createTable(tableName,listColumns);
-        //forwardSlave2.createTable(tableName,listColumns);
+        forwardSlave1.createTable(tableName,listColumns);
+        forwardSlave2.createTable(tableName,listColumns);
         return "Table created successfully";
     }
 
@@ -217,13 +217,13 @@ public class Controller {
         if (!table.checkSelectMethod(selectMethod))
             throw new NotFoundException("Params error");
 
-        //CompletionStage<List<List<Object>>> future1 = forwardSlave1.getContent(selectMethod);
-        //CompletionStage<List<List<Object>>> future2 = forwardSlave2.getContent(selectMethod);
+        CompletionStage<List<List<Object>>> future1 = forwardSlave1.getContent(selectMethod);
+        CompletionStage<List<List<Object>>> future2 = forwardSlave2.getContent(selectMethod);
 
         List<List<Object>> res = table.select(selectMethod);
 
-        //res.addAll(future1.toCompletableFuture().join());
-        //res.addAll(future2.toCompletableFuture().join());
+        res.addAll(future1.toCompletableFuture().join());
+        res.addAll(future2.toCompletableFuture().join());
 
         List<ColumnSelected> aggregats = selectMethod.getAGGREGAT();
         if (aggregats != null && !aggregats.isEmpty()) {
