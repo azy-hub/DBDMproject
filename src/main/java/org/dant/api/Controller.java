@@ -31,7 +31,6 @@ import org.jboss.resteasy.reactive.RestPath;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.*;
 
@@ -88,6 +87,7 @@ public class Controller {
     @Path("/parquet/fillTable/{tableName}")
     @Consumes(MediaType.APPLICATION_OCTET_STREAM)
     public String readParquet(@RestPath String tableName, File file) throws IOException {
+        System.out.println("Start Parsing ...");
         long startTime = System.currentTimeMillis();
         Configuration conf = new Configuration();
         Table table = DataBase.get().get(tableName);
@@ -107,7 +107,7 @@ public class Controller {
                 BlockingQueue<Group> queue = new ArrayBlockingQueue<>(sizeBloc);
                 Callable<Void> consumer = () -> {
                     int sizeSample = 10000;
-                    List<List<Object>> listOfLists = new ArrayList<>(rows/3);
+                    List<List<Object>> listOfLists = new ArrayList<>(sizeBloc);
                     try {
                         int i=0;
                         while (i<rows/3) {
@@ -120,13 +120,13 @@ public class Controller {
                             }
                             if(listOfLists.size() == sizeBloc) {
                                 forwardSlave1.forwardRowsToTable(tableName,listOfLists);
-                                listOfLists.clear();
+                                listOfLists = new ArrayList<>(sizeBloc);
                             }
                             i++;
                         }
                         if(!listOfLists.isEmpty()) {
                             forwardSlave1.forwardRowsToTable(tableName,listOfLists);
-                            listOfLists.clear();
+                            listOfLists = new ArrayList<>(sizeBloc);
                         }
                         i=0;
                         while (i<rows/3) {
@@ -134,13 +134,12 @@ public class Controller {
                             listOfLists.add(Utils.extractListFromGroup(group, table.getColumns()));
                             if(listOfLists.size() == sizeBloc) {
                                 forwardSlave2.forwardRowsToTable(tableName,listOfLists);
-                                listOfLists.clear();
+                                listOfLists = new ArrayList<>(sizeBloc);
                             }
                             i++;
                         }
                         if(!listOfLists.isEmpty()) {
                             forwardSlave2.forwardRowsToTable(tableName,listOfLists);
-                            listOfLists.clear();
                         }
                         i=0;
                         table.getRows().ensureCapacity(table.getRows().size() + (rows/3));
@@ -197,10 +196,9 @@ public class Controller {
         }
         if( listColumns.isEmpty() )
             return "Columns are empty";
-        else
-            new Table(tableName, listColumns);
         forwardSlave1.createTable(tableName,listColumns);
         forwardSlave2.createTable(tableName,listColumns);
+        new Table(tableName, listColumns);
         return "Table created successfully";
     }
 
@@ -211,11 +209,14 @@ public class Controller {
     public List<List<Object>> getTableContent(SelectMethod selectMethod) {
         Table table = DataBase.get().get(selectMethod.getFROM());
 
-        if (table == null)
+        if (table == null) {
+            System.out.println("La table avec le nom " + selectMethod.getFROM() + " n'a pas été trouvée.");
             throw new NotFoundException("La table avec le nom " + selectMethod.getFROM() + " n'a pas été trouvée.");
+        }
 
-        if (!table.checkSelectMethod(selectMethod))
+        if (!table.checkSelectMethod(selectMethod)) {
             throw new NotFoundException("Params error");
+        }
 
         CompletionStage<List<List<Object>>> future1 = forwardSlave1.getContent(selectMethod);
         CompletionStage<List<List<Object>>> future2 = forwardSlave2.getContent(selectMethod);
@@ -228,7 +229,7 @@ public class Controller {
         List<ColumnSelected> aggregats = selectMethod.getAGGREGAT();
         if (aggregats != null && !aggregats.isEmpty()) {
 
-            if (selectMethod.getGROUPBY() != null) {
+            if ( selectMethod.getGROUPBY() != null && !selectMethod.getGROUPBY().isEmpty()) {
                 // appliquer le groupBy pour tout mettre dans une Map (chaque valeur associé aux lignes de la table qui lui correspondent)
                 Map<Object, List<List<Object>>> groupBy = new HashMap<>();
                 res.forEach(list -> {
@@ -243,21 +244,29 @@ public class Controller {
                     boolean havingBool = true;
                     for (int idxOfAggregat = 0; idxOfAggregat < aggregats.size(); idxOfAggregat++) {
                         ColumnSelected columnSelected = aggregats.get(idxOfAggregat);
+                        int finalIdxOfAggregat = idxOfAggregat;
                         if (columnSelected.getTypeAggregat().equalsIgnoreCase("COUNT")) {
-                            columnSelected.setTypeAggregat("SUM");
-                            tmp.add(columnSelected.applyAggregat(list, idxOfAggregat + 1, TypeDB.INT));
-                            columnSelected.setTypeAggregat("COUNT");
+                            tmp.add( list.stream().mapToInt(row -> (int)row.get(finalIdxOfAggregat +1)).sum() );
                         } else if (columnSelected.getTypeAggregat().equalsIgnoreCase("AVG")) {
-                            tmp.add(columnSelected.applyAggregat(list, idxOfAggregat + 1, TypeDB.DOUBLE));
+                            tmp.add(list.stream().mapToDouble( row -> (double)row.get(finalIdxOfAggregat +1)).sum() / (double) list.size());
+                        } else if (columnSelected.getTypeAggregat().equalsIgnoreCase("SUM") && table.getColumnByName(columnSelected.getNameColumn()).getType().equals("LONG")) {
+                            tmp.add( list.stream().mapToLong( row -> (row.get(finalIdxOfAggregat +1) instanceof Integer)?((Integer) row.get(finalIdxOfAggregat +1)).longValue():(Long)row.get(finalIdxOfAggregat +1)).sum());
                         } else {
                             tmp.add(columnSelected.applyAggregat(list, idxOfAggregat + 1, table.getColumnByName(columnSelected.getNameColumn()).getType()));
                         }
 
                         if( !(selectMethod.getHAVING() == null || selectMethod.getHAVING().isEmpty()) ) {
                             for(Having having : selectMethod.getHAVING()) {
-                                if( having.getAggregate().equals(columnSelected) && !having.checkCondition(tmp,idxOfAggregat+1,table.getColumnByName(columnSelected.getNameColumn()).getType()) ) {
-                                    havingBool = false;
-                                    break;
+                                if( having.getAggregate().getNameColumn().equals("*")) {
+                                    if( having.getAggregate().equals(columnSelected) && !having.checkHaving(tmp,idxOfAggregat+1,TypeDB.INT) ) {
+                                        havingBool = false;
+                                        break;
+                                    }
+                                } else {
+                                    if (having.getAggregate().equals(columnSelected) && !having.checkHaving(tmp, idxOfAggregat + 1, table.getColumnByName(columnSelected.getNameColumn()).getType())) {
+                                        havingBool = false;
+                                        break;
+                                    }
                                 }
                             }
                         }

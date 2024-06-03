@@ -1,5 +1,6 @@
 package org.dant.select;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.dant.commons.TypeDB;
 
 import java.io.Serializable;
@@ -8,8 +9,11 @@ import java.util.List;
 
 public class Condition {
 
+    @JsonProperty("nameColumn")
     private String nameColumn;
+    @JsonProperty("op")
     private String op;
+    @JsonProperty("value")
     private Object value;
 
     public Condition() {

@@ -1,5 +1,6 @@
 package org.dant.select;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.dant.commons.Utils;
 import org.dant.model.Column;
 
@@ -10,11 +11,15 @@ import java.util.stream.Collectors;
 
 public class SelectMethod {
 
+    @JsonProperty("SELECT")
     private List<ColumnSelected> SELECT;
+    @JsonProperty("FROM")
     private String FROM;
+    @JsonProperty("WHERE")
     private List<Condition> WHERE;
+    @JsonProperty("GROUPBY")
     private List<String> GROUPBY;
-
+    @JsonProperty("HAVING")
     private List<Having> HAVING;
 
     public SelectMethod() {

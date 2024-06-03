@@ -1,5 +1,7 @@
 package org.dant.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.parquet.example.data.Group;
 import org.dant.commons.TypeDB;
 import org.dant.index.Index;
@@ -10,12 +12,19 @@ import java.util.function.Function;
 
 public class Column {
 
+    @JsonProperty("name")
     private String name;
+    @JsonProperty("type")
     private String type;
+    @JsonIgnore
     public Function<Group,Object> extractFromGroup;
+    @JsonIgnore
     public Function<Object,Object> parseJson;
+    @JsonIgnore
     private boolean isIndex;
+    @JsonIgnore
     private Index index;
+    @JsonIgnore
     private int number;
 
     public Column(){

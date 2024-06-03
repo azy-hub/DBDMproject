@@ -7,10 +7,13 @@ import org.dant.commons.TypeDB;
 import org.dant.index.IndexFactory;
 import org.dant.select.ColumnSelected;
 import org.dant.select.Condition;
+import org.dant.select.Having;
 import org.dant.select.SelectMethod;
 
 import java.math.BigDecimal;
 import java.util.*;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 public class Table {
@@ -20,8 +23,7 @@ public class Table {
     private List<Column> indexedColumns;
     private ArrayList<List<Object>> rows;
     private boolean isIndexed;
-
-    private final SpinLock lockAdd = new SpinLock();
+    private final Lock lockAdd = new ReentrantLock();
 
     public Table() {
     }
@@ -46,6 +48,7 @@ public class Table {
     }
 
     public void addAllRows(List<List<Object>> lignes) {
+        lockAdd.lock();
         final int[] rowsIdx = {rows.size()};
         Thread thread = new Thread(() -> {
             int index = rowsIdx[0];
@@ -59,12 +62,13 @@ public class Table {
             }
         });
         thread.start();
-        rows.addAll(rows);
+        rows.addAll(lignes);
         try {
             thread.join();
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
+        lockAdd.unlock();
     }
 
     public void addOneRowToIndex(List<Object> row, int index) {
@@ -116,12 +120,12 @@ public class Table {
     }
 
     public List<Column> getColumnsByNames(List<ColumnSelected> list) {
-        if (list.stream().anyMatch( columnSelected -> columnSelected.getNameColumn().equals("*") ) ) {
+        if (list.stream().anyMatch( columnSelected -> columnSelected.getNameColumn().equalsIgnoreCase("*") ) ) {
             return columns;
         }
         return list.stream().map( columnSelected -> {
             for( Column column : columns) {
-                if( column.getName().equals(columnSelected.getNameColumn()))
+                if( column.getName().equalsIgnoreCase(columnSelected.getNameColumn()))
                     return column;
             }
             return null;
@@ -142,7 +146,7 @@ public class Table {
 
     public boolean checkCondition(Condition condition) {
         for(Column column : columns) {
-            if (condition.getNameColumn().equals(column.getName())) {
+            if (condition.getNameColumn().equalsIgnoreCase(column.getName())) {
                 switch (column.getType()) {
                     case TypeDB.DOUBLE:
                         return condition.getValue() instanceof BigDecimal;
@@ -159,21 +163,48 @@ public class Table {
         return false;
     }
 
-    public boolean checkConditions(List<Condition> conditions) {
-        return (conditions == null) || conditions.stream().allMatch(this::checkCondition);
+    public boolean checkColumnExist(List<Column> columnList, String nameColumn) {
+        for(Column column : columnList) {
+            if (column.getName().equalsIgnoreCase(nameColumn))
+                return true;
+        }
+        return false;
     }
 
     public boolean checkSelectMethod(SelectMethod selectMethod) {
-        if ( !((selectMethod.getWHERE() == null) || selectMethod.getWHERE().stream().allMatch(this::checkCondition)))
+        if ( selectMethod.getWHERE() != null && !selectMethod.getWHERE().isEmpty() && !selectMethod.getWHERE().stream().allMatch(this::checkCondition) ) {
+            System.out.println("La valeure saisie dans le WHERE ne correspond pas au type de la colonne");
             return false;
-        if ( getColumnsByNames(selectMethod.getSELECT()).isEmpty() )
-            return false;
-        /*if ( selectMethod.getGROUPBY() != null && selectMethod.getGROUPBY().isEmpty() ) {
-            if ( selectMethod.getSELECT().stream().noneMatch(columnName -> columnName.equals(selectMethod.getGROUPBY()) ) )
-                return false;
-            if ( selectMethod.getSELECT().stream().filter( columnSelected -> columnSelected.getTypeAggregat() != null ).anyMatch( aggregat -> aggregat.getNameColumn().equals(selectMethod.getGROUPBY()) ) )
-                return false;
-        }*/
+        }
+        for (ColumnSelected columnSelected : selectMethod.getSELECT()) {
+            if( !columnSelected.getNameColumn().equalsIgnoreCase("*")) {
+                if (!checkColumnExist(columns, columnSelected.getNameColumn())) {
+                    System.out.println("La colonne " + columnSelected.getNameColumn() + " n'existe pas.");
+                    return false;
+                }
+            }
+        }
+        List<Column> columnList = getColumnsByNames(selectMethod.getSELECT());
+        if (selectMethod.getGROUPBY()!=null && !selectMethod.getGROUPBY().isEmpty()) {
+            for (String nameColumn : selectMethod.getGROUPBY()) {
+                if (!checkColumnExist(columns, nameColumn)) {
+                    System.out.println("La colonne du groupby " + nameColumn + " n'existe pas dans les colonnes selectionné.");
+                    return false;
+                }
+            }
+        }
+        if (selectMethod.getHAVING()!=null && !selectMethod.getHAVING().isEmpty()) {
+            for(Having having : selectMethod.getHAVING()) {
+                if(!checkColumnExist(columnList, having.getAggregate().getNameColumn())) {
+                    System.out.println("La colonne du having " + having.getAggregate().getNameColumn() + " n'existe pas dans les colonnes selectionné.");
+                    return false;
+                }
+                if(!having.checkCondition()) {
+                    System.out.println("La valeur de la condition du having ne correspond pas au type.");
+                    return false;
+                }
+            }
+        }
         return true;
     }
 

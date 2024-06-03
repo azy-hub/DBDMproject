@@ -57,12 +57,11 @@ public class Slave {
     @Path("/insertRows/{tableName}")
     @Consumes(MediaType.APPLICATION_JSON)
     public void insertRows(@PathParam("tableName") String tableName, List<List<Object>> listArgs) {
-        System.out.println("Rows received !");
         Table table = DataBase.get().get(tableName);
         if(table == null)
             throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
         table.addAllRows(listArgs.parallelStream().map( list -> Utils.castRow(list,table.getColumns())).collect(Collectors.toList()));
-        System.out.println(listArgs.size()+" rows added !");
+        System.out.println("Insert "+listArgs.size()+" rows !");
     }
 
     @POST

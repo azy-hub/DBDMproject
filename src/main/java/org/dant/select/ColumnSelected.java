@@ -1,15 +1,16 @@
 package org.dant.select;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.dant.commons.TypeDB;
 
-import java.io.Serializable;
 import java.util.List;
 import java.util.Objects;
 
 public class ColumnSelected {
 
+    @JsonProperty("nameColumn")
     private String nameColumn;
-
+    @JsonProperty("typeAggregat")
     private String typeAggregat;
 
     public ColumnSelected() {}
@@ -54,7 +55,7 @@ public class ColumnSelected {
                 case TypeDB.INT, TypeDB.SHORT,TypeDB.BYTE:
                     return listOfList.stream().mapToInt( list -> (int)list.get(index)).sum();
                 case TypeDB.LONG:
-                    return listOfList.stream().mapToLong( list -> (long)list.get(index)).sum();
+                    return listOfList.stream().mapToLong( list -> (Long)list.get(index)).sum();
                 case TypeDB.DOUBLE:
                     return (float) listOfList.stream().mapToDouble( list -> ((Float)list.get(index)).doubleValue()).sum();
                 case TypeDB.STRING:
@@ -94,11 +95,11 @@ public class ColumnSelected {
         if (typeAggregat.equals("AVG")) {
             switch (typeColumn) {
                 case TypeDB.INT, TypeDB.SHORT,TypeDB.BYTE:
-                    return (float) (listOfList.stream().mapToInt( list -> (int)list.get(index)).sum() / (double) listOfList.size());
+                    return (listOfList.stream().mapToInt( list -> (int)list.get(index)).sum() / (double) listOfList.size());
                 case TypeDB.LONG:
-                    return (float) (listOfList.stream().mapToLong( list -> (long)list.get(index)).sum() / (double) listOfList.size());
+                    return (listOfList.stream().mapToLong( list -> (long)list.get(index)).sum() / (double) listOfList.size());
                 case TypeDB.DOUBLE:
-                    return (float) (listOfList.stream().mapToDouble( list -> ((Float)list.get(index)).doubleValue() ).sum() / (double) listOfList.size());
+                    return (listOfList.stream().mapToDouble( list -> ((Float)list.get(index)).doubleValue() ).sum() / (double) listOfList.size());
                 case TypeDB.STRING:
                     return null;
             }

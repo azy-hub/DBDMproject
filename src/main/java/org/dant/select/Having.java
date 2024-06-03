@@ -1,14 +1,16 @@
 package org.dant.select;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.dant.commons.TypeDB;
 
-import java.io.Serializable;
+import java.math.BigDecimal;
 import java.util.List;
 
 public class Having {
 
+    @JsonProperty("aggregate")
     private ColumnSelected aggregate;
-
+    @JsonProperty("condition")
     private Condition condition;
 
     public Having() {
@@ -35,14 +37,20 @@ public class Having {
         this.condition = condition;
     }
 
-    public boolean checkCondition(List<Object> list, int index, String type) {
-        switch (aggregate.getTypeAggregat()) {
-            case "COUNT" :
-                return condition.checkCondition(list, index, TypeDB.INT);
-            case "AVG" :
-                return condition.checkCondition(list, index, TypeDB.DOUBLE);
-            default:
-                return condition.checkCondition(list, index, type);
-        }
+    public boolean checkHaving(List<Object> list, int index, String type) {
+        return switch (aggregate.getTypeAggregat()) {
+            case "COUNT" -> condition.checkCondition(list, index, TypeDB.INT);
+            case "AVG" -> condition.checkCondition(list, index, TypeDB.DOUBLE);
+            default -> condition.checkCondition(list, index, type);
+        };
+    }
+
+    public boolean checkCondition() {
+        return switch (aggregate.getTypeAggregat()) {
+            case "COUNT" ->
+                    ((condition.getValue() instanceof BigDecimal) && ((BigDecimal) condition.getValue()).stripTrailingZeros().scale() <= 0);
+            case "AVG", "SUM" -> condition.getValue() instanceof BigDecimal;
+            default -> true;
+        };
     }
 }
