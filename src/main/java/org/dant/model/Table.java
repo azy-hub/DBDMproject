@@ -44,7 +44,11 @@ public class Table {
     public void addRow(List<Object> row) {
         int idx = rows.size();
         rows.add(row);
-        addOneRowToIndex(row, idx);
+        for(Column column : indexedColumns) {
+            Object object = row.get(column.getNumber());
+            if (object !=null)
+                column.getIndex().addIndex(object, idx);
+        }
     }
 
     public void addAllRows(List<List<Object>> lignes) {
@@ -69,24 +73,6 @@ public class Table {
             throw new RuntimeException(e);
         }
         lockAdd.unlock();
-    }
-
-    public void addOneRowToIndex(List<Object> row, int index) {
-        for(Column column : indexedColumns) {
-            Object object = row.get(column.getNumber());
-            if (object !=null)
-                column.getIndex().addIndex(object, index);
-        }
-    }
-
-    public void addAllRowToIndex(List<List<Object>> rows, int indexStart) {
-        for(List<Object> row : rows) {
-            for (Column column : indexedColumns) {
-                Object object = row.get(column.getNumber());
-                if (object != null)
-                    column.getIndex().addIndex(object, indexStart++);
-            }
-        }
     }
 
     public String getName() {
@@ -224,62 +210,37 @@ public class Table {
         // Récupérer la liste des colonnes qu'on séléctionne
         List<Column> columnList = getColumnsByNames(selectMethod.getSELECT());
         List<List<Object>> res = rows;
-
         // Récupère les conditions qui ont été soumise dans le WHERE
         List<Condition> conditions = new ArrayList<>(selectMethod.getWHERE());
-        int nbConditions = (conditions != null) ? conditions.size() : 0;
-
-        if (conditions!= null && !conditions.isEmpty()) {
+        if (!conditions.isEmpty()) {
             // Filtre par les conditions qui sont sur des colonnes indéxé
             res = filterRowsWithIndexedColumn(res, conditions, columnList);
-
             // Filtre par les conditions qui sont pas
             res = filterRowsWithoutIndexedColumn(res, conditions);
-
         }
-
         List<ColumnSelected> aggregats = selectMethod.getAGGREGAT();
         // Vérifie si un groupBy et un aggrégat ont été demandé dans la requete SELECT
         if ( aggregats != null && !aggregats.isEmpty()) {
             if ( selectMethod.getGROUPBY() != null && !selectMethod.getGROUPBY().isEmpty()) {
                 //int idxOfColumnGroupBy = Utils.getIdxColumnByName(columns, selectMethod.getGROUPBY()); // Trouve l'index de la colonne à regrouper parmis les colonnes selectionnées
                 List<Integer> idxOfColumnsGroupBy = selectMethod.getGROUPBY().stream().map( nameColumn -> Utils.getIdxColumnByName(columns, nameColumn)).toList();
-                // si le groupBy est appliqué sur un index et que aucune condition de filtre n'a été appliqué alors on peut directement récupérer les valeurs du groupBy par l'index
-                if ( idxOfColumnsGroupBy.size() == 1 && columns.get(idxOfColumnsGroupBy.get(0)).isIndex() && nbConditions == 0) {
-                    List<List<Object>> groupby = new ArrayList<>( columns.get(idxOfColumnsGroupBy.get(0)).getIndex().getKeys().size() );
-                    columns.get(idxOfColumnsGroupBy.get(0)).getIndex().getKeys().parallelStream().forEach(key -> {
-                        TIntArrayList idxRows = columns.get(idxOfColumnsGroupBy.get(0)).getIndex().getIndexFromValue(key);
-                        List<List<Object>> resultat = new ArrayList<>(idxRows.size());
-                        for (int idx = 0; idx < idxRows.size(); idx++) {
-                            resultat.add(getRows().get(idxRows.get(idx)));
-                        }
-                        List<Object> tmp = selectMethod.applyAllAggregats(columns, resultat);
-                        tmp.add(0, key);
-                        groupby.add(tmp);
-                    });
-                    res = groupby;
-
-                } else {
-                    Map<List<Object>, List<List<Object>>> groupBy = new HashMap<>();
-                    // Parcours chaque ligne et regroupe chaque valeur avec les lignes qui lui correspondent
-                    SpinLock groupByLock = new SpinLock();
-                    res.parallelStream().forEach(list -> {
-                        List<Object> object = idxOfColumnsGroupBy.stream().map(list::get).toList();
-                        groupByLock.lock();
-                        groupBy.computeIfAbsent(object, k -> new ArrayList<>()).add(list);
-                        groupByLock.unlock();
-                    });
-
-                    // Parcours la map générer grace au regroupement et applique les aggrégats demandés
-                    List<List<Object>> resultat = new ArrayList<>();
-                    groupBy.keySet().stream().forEach( obj -> {
-                        List<Object> tmp = selectMethod.applyAllAggregats(columns, groupBy.get(obj));
-                        tmp.add(0, obj);
-                        resultat.add( tmp );
-                    });
-                    res = resultat;
-
-                }
+                Map<List<Object>, List<List<Object>>> groupBy = new HashMap<>();
+                // Parcours chaque ligne et regroupe chaque valeur avec les lignes qui lui correspondent
+                SpinLock groupByLock = new SpinLock();
+                res.parallelStream().forEach(list -> {
+                    List<Object> object = idxOfColumnsGroupBy.stream().map(list::get).toList();
+                    groupByLock.lock();
+                    groupBy.computeIfAbsent(object, k -> new ArrayList<>()).add(list);
+                    groupByLock.unlock();
+                });
+                // Parcours la map générer grace au regroupement et applique les aggrégats demandés
+                List<List<Object>> resultat = new ArrayList<>();
+                groupBy.keySet().stream().forEach( obj -> {
+                    List<Object> tmp = selectMethod.applyAllAggregats(columns, groupBy.get(obj));
+                    tmp.add(0, obj);
+                    resultat.add( tmp );
+                });
+                res = resultat;
             } else {
                 List<List<Object>> resultat = new ArrayList<>();
                 resultat.add( selectMethod.applyAllAggregats(columns, res) );
@@ -310,7 +271,6 @@ public class Table {
         List<Condition> conditionsOnIndexedColumn = conditions.stream().filter(condition -> isConditionOnIndexedColumn(condition, columnList)).collect(Collectors.toList());
 
         if (!conditionsOnIndexedColumn.isEmpty()) { // Si y a des conditions sur des colonnes indéxées alors utilisent directement l'index pour récuperer les index des lignes qui correspondent
-            System.out.println("Condition avec index");
             // Récupérer les index de la première condition sur une colonne indéxé
             int idxColumn = Utils.getIndexOfColumnByCondition(conditionsOnIndexedColumn.get(0), columnList);
             TIntArrayList idxRows = new TIntArrayList();

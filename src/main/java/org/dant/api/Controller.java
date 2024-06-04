@@ -18,13 +18,11 @@ import org.apache.parquet.io.RecordReader;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.parquet.schema.MessageType;
-import org.dant.commons.TypeDB;
 import org.dant.commons.Utils;
 import org.dant.model.*;
 import org.dant.rest.ForwardSlave1;
 import org.dant.rest.ForwardSlave2;
 import org.dant.select.ColumnSelected;
-import org.dant.select.Having;
 import org.dant.select.SelectMethod;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 import org.jboss.resteasy.reactive.RestPath;
@@ -34,7 +32,7 @@ import java.io.InputStream;
 import java.util.*;
 import java.util.concurrent.*;
 
-@Path("/v1")
+@Path("/manager")
 public class Controller {
 
     @RestClient
@@ -47,7 +45,7 @@ public class Controller {
     @POST
     @Path("/parquet/createTable/{tableName}")
     @Consumes(MediaType.APPLICATION_OCTET_STREAM)
-    public String parseParquet(@RestPath String tableName, InputStream inputStream) throws IOException {
+    public String parseParquet(@RestPath String tableName, InputStream inputStream) {
         Configuration conf = new Configuration();
         FileSystem fs;
         org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path("temp.parquet");
@@ -69,7 +67,7 @@ public class Controller {
                 for (ColumnDescriptor columnDescriptor : parquetSchema.getColumns()) {
                     columns.add(new Column(columnDescriptor.getPrimitiveType().getName(), columnDescriptor.getPrimitiveType().getPrimitiveTypeName().toString(), i++));
                 }
-                createTable(tableName,columns);
+                //createTable(tableName,columns);
                 return "Table created successfully";
             }
         } catch (IOException e) {
@@ -172,37 +170,6 @@ public class Controller {
     }
 
     @GET
-    @Path("/DataBase")
-    public String getAllTables() {
-        StringBuilder stringBuilder = new StringBuilder("Les Tables sont : \n");
-        Map<String, Table> map = DataBase.get();
-        for(String name : map.keySet()) {
-            stringBuilder.append("\nTable ").append(name).append(" :\n");
-            stringBuilder.append("Number of rows : ").append(map.get(name).getRows().size()).append("\n");
-            List<Column> columns = map.get(name).getColumns();
-            for( Column c : columns ) {
-                stringBuilder.append("Colonne : ").append(c.getName()).append(", Type : ").append(c.getType()).append("\n");
-            }
-        }
-        return stringBuilder.toString();
-    }
-
-    @POST
-    @Path("/createTable/{tableName}")
-    @Consumes(MediaType.APPLICATION_JSON)
-    public String createTable(@RestPath String tableName,List<Column> listColumns) {
-        if (DataBase.get().containsKey(tableName)) {
-            return "Table already exists with name : "+tableName;
-        }
-        if( listColumns.isEmpty() )
-            return "Columns are empty";
-        forwardSlave1.createTable(tableName,listColumns);
-        forwardSlave2.createTable(tableName,listColumns);
-        new Table(tableName, listColumns);
-        return "Table created successfully";
-    }
-
-    @GET
     @Path("/select")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
@@ -242,69 +209,10 @@ public class Controller {
         Table table = DataBase.get().get(tableName);
         if(table == null)
             throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
-
         forwardSlave1.forwardRowsToTable(tableName,listArgs.subList(0, listArgs.size()/3));
         forwardSlave2.forwardRowsToTable(tableName,listArgs.subList(listArgs.size()/3, 2*listArgs.size()/3));
         table.addAllRows(listArgs.subList(2*listArgs.size()/3, listArgs.size()).parallelStream().map( list -> Utils.castRow(list, table.getColumns())).toList());
         return "Rows added successfully !";
-    }
-
-    @POST
-    @Path("/deleteColumn")
-    @Consumes(MediaType.APPLICATION_JSON)
-    public String deleteColumn(@QueryParam("tableName") String tableName, @QueryParam("nameColumn") String nameColumn) {
-        Table table = DataBase.get().get(tableName);
-        if(table == null)
-            return ("La table '" + tableName + "' n'a pas été trouvée.");
-        forwardSlave1.deleteColumn(tableName, nameColumn);
-        forwardSlave2.deleteColumn(tableName, nameColumn);
-        boolean deleted = table.deleteColumn(nameColumn);
-        return deleted ? "Colonne '"+nameColumn+"' a bien été supprimé !" : "La colonne '"+nameColumn+"' n'a pas été trouvé.";
-    }
-
-    @POST
-    @Path("/addColumn")
-    @Consumes(MediaType.APPLICATION_JSON)
-    public String addColumn(@QueryParam("tableName") String tableName, @QueryParam("nameColumn") String nameColumn,
-                               @QueryParam("type") String type, @QueryParam("defaultValue") String defaultValue) {
-        Table table = DataBase.get().get(tableName);
-        if(table == null)
-            return ("La table '" + tableName + "' n'a pas été trouvée.");
-        if( !List.of(TypeDB.STRING, TypeDB.LONG, TypeDB.INT, TypeDB.DOUBLE, TypeDB.SHORT, TypeDB.BYTE).contains(type))
-            return "Type invalide";
-        Object val = null;
-        if (defaultValue != null) {
-            try {
-                switch (type) {
-                    case TypeDB.DOUBLE:
-                        val = Double.parseDouble(defaultValue);
-                        break;
-                    case TypeDB.STRING:
-                        val = defaultValue;
-                        break;
-                    case TypeDB.LONG:
-                        val = Long.parseLong(defaultValue);
-                        break;
-                    case TypeDB.INT:
-                        val = Integer.parseInt(defaultValue);
-                        break;
-                    case TypeDB.SHORT:
-                        val = Short.parseShort(defaultValue);
-                        break;
-                    case TypeDB.BYTE:
-                        val = Byte.parseByte(defaultValue);
-                        break;
-                    default:
-                        return "Type non pris en charge";
-                }
-            } catch (ClassCastException | ArithmeticException e) {
-                return "La valeur fournie ne correspond pas au type " + type;
-            }
-        }
-        forwardSlave1.addColumn(tableName, nameColumn, type, defaultValue);
-        forwardSlave2.addColumn(tableName, nameColumn, type, defaultValue);
-        table.addNewColumn(nameColumn, type, val);
-        return "Column added !";
     }
 
 }
