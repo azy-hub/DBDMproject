@@ -57,7 +57,7 @@ public class ColumnSelected {
                 case TypeDB.LONG:
                     return listOfList.stream().mapToLong( list -> (Long)list.get(index)).sum();
                 case TypeDB.DOUBLE:
-                    return (float) listOfList.stream().mapToDouble( list -> ((Float)list.get(index)).doubleValue()).sum();
+                    return listOfList.stream().mapToDouble( list -> ((Float)list.get(index)).doubleValue()).sum();
                 case TypeDB.STRING:
                     return null;
             }
@@ -75,7 +75,7 @@ public class ColumnSelected {
                 case TypeDB.LONG:
                     return listOfList.parallelStream().mapToLong( list -> (long)list.get(index)).max().getAsLong();
                 case TypeDB.DOUBLE:
-                    return (float) listOfList.parallelStream().mapToDouble( list -> ((Float)list.get(index)).doubleValue()).max().getAsDouble();
+                    return listOfList.parallelStream().mapToDouble( list -> ((Float)list.get(index)).doubleValue()).max().getAsDouble();
                 case TypeDB.STRING:
                     return null;
             }
@@ -87,7 +87,7 @@ public class ColumnSelected {
                 case TypeDB.LONG:
                     return listOfList.stream().mapToLong( list -> (long)list.get(index)).min().getAsLong();
                 case TypeDB.DOUBLE:
-                    return (float) listOfList.stream().mapToDouble( list -> ((Float)list.get(index)).doubleValue() ).min().getAsDouble();
+                    return listOfList.stream().mapToDouble( list -> ((Float)list.get(index)).doubleValue() ).min().getAsDouble();
                 case TypeDB.STRING:
                     return null;
             }

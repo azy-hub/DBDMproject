@@ -208,18 +208,15 @@ public class Controller {
     @Produces(MediaType.APPLICATION_JSON)
     public List<List<Object>> getTableContent(SelectMethod selectMethod) {
         Table table = DataBase.get().get(selectMethod.getFROM());
-
         if (table == null) {
             System.out.println("La table avec le nom " + selectMethod.getFROM() + " n'a pas été trouvée.");
             throw new NotFoundException("La table avec le nom " + selectMethod.getFROM() + " n'a pas été trouvée.");
         }
-
         if (!table.checkSelectMethod(selectMethod)) {
             throw new NotFoundException("Params error");
         }
-
-        CompletionStage<List<List<Object>>> future1 = forwardSlave1.getContent(selectMethod);
-        CompletionStage<List<List<Object>>> future2 = forwardSlave2.getContent(selectMethod);
+        CompletionStage<List<List<Object>>> future1 = forwardSlave1.getContent(selectMethod).thenApply( rows -> Utils.castResponseFromNode(table, selectMethod, rows));
+        CompletionStage<List<List<Object>>> future2 = forwardSlave2.getContent(selectMethod).thenApply( rows -> Utils.castResponseFromNode(table, selectMethod, rows));
 
         List<List<Object>> res = table.select(selectMethod);
 
@@ -228,80 +225,10 @@ public class Controller {
 
         List<ColumnSelected> aggregats = selectMethod.getAGGREGAT();
         if (aggregats != null && !aggregats.isEmpty()) {
-
             if ( selectMethod.getGROUPBY() != null && !selectMethod.getGROUPBY().isEmpty()) {
-                // appliquer le groupBy pour tout mettre dans une Map (chaque valeur associé aux lignes de la table qui lui correspondent)
-                Map<Object, List<List<Object>>> groupBy = new HashMap<>();
-                res.forEach(list -> {
-                    Object object = list.get(0);
-                    groupBy.computeIfAbsent(object, k -> new ArrayList<>()).add(list);
-                });
-
-                List<List<Object>> resultat = new ArrayList<>(groupBy.keySet().size());
-                groupBy.forEach((obj, list) -> {
-                    List<Object> tmp = new ArrayList<>(1 + aggregats.size());
-                    tmp.add(obj);
-                    boolean havingBool = true;
-                    for (int idxOfAggregat = 0; idxOfAggregat < aggregats.size(); idxOfAggregat++) {
-                        ColumnSelected columnSelected = aggregats.get(idxOfAggregat);
-                        int finalIdxOfAggregat = idxOfAggregat;
-                        if (columnSelected.getTypeAggregat().equalsIgnoreCase("COUNT")) {
-                            tmp.add( list.stream().mapToInt(row -> (int)row.get(finalIdxOfAggregat +1)).sum() );
-                        } else if (columnSelected.getTypeAggregat().equalsIgnoreCase("AVG")) {
-                            tmp.add(list.stream().mapToDouble( row -> (double)row.get(finalIdxOfAggregat +1)).sum() / (double) list.size());
-                        } else if (columnSelected.getTypeAggregat().equalsIgnoreCase("SUM") && table.getColumnByName(columnSelected.getNameColumn()).getType().equals("LONG")) {
-                            tmp.add( list.stream().mapToLong( row -> (row.get(finalIdxOfAggregat +1) instanceof Integer)?((Integer) row.get(finalIdxOfAggregat +1)).longValue():(Long)row.get(finalIdxOfAggregat +1)).sum());
-                        } else {
-                            tmp.add(columnSelected.applyAggregat(list, idxOfAggregat + 1, table.getColumnByName(columnSelected.getNameColumn()).getType()));
-                        }
-
-                        if( !(selectMethod.getHAVING() == null || selectMethod.getHAVING().isEmpty()) ) {
-                            for(Having having : selectMethod.getHAVING()) {
-                                if( having.getAggregate().getNameColumn().equals("*")) {
-                                    if( having.getAggregate().equals(columnSelected) && !having.checkHaving(tmp,idxOfAggregat+1,TypeDB.INT) ) {
-                                        havingBool = false;
-                                        break;
-                                    }
-                                } else {
-                                    if (having.getAggregate().equals(columnSelected) && !having.checkHaving(tmp, idxOfAggregat + 1, table.getColumnByName(columnSelected.getNameColumn()).getType())) {
-                                        havingBool = false;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-
-                    }
-                    if(havingBool)
-                        resultat.add(tmp);
-                });
-                res = resultat;
+                res = Utils.aggregateResultNodesGroupBy(res, table, selectMethod);
             } else {
-                List<List<Object>> resTmp = new ArrayList<>();
-                List<Object> tmp = new ArrayList<>(aggregats.size());
-                boolean havingBool = true;
-                for (int idxOfAggregat = 0; idxOfAggregat < aggregats.size(); idxOfAggregat++) {
-                    ColumnSelected columnSelected = aggregats.get(idxOfAggregat);
-                    if (columnSelected.getTypeAggregat().equals("COUNT")) {
-                        columnSelected.setTypeAggregat("SUM");
-                        tmp.add(columnSelected.applyAggregat(res, idxOfAggregat, TypeDB.INT));
-                        columnSelected.setTypeAggregat("COUNT");
-                    } else {
-                        tmp.add(columnSelected.applyAggregat(res, idxOfAggregat, table.getColumnByName(columnSelected.getNameColumn()).getType()));
-                    }
-
-                    if( !(selectMethod.getHAVING() == null || selectMethod.getHAVING().isEmpty()) ) {
-                        for(Having having : selectMethod.getHAVING()) {
-                            if( having.getAggregate().equals(columnSelected) && !having.getCondition().checkCondition(tmp,idxOfAggregat,table.getColumnByName(columnSelected.getNameColumn()).getType()) ) {
-                                havingBool = false;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if (havingBool)
-                    resTmp.add(tmp);
-                res = resTmp;
+                res = Utils.aggregateResultNodes(res, table, selectMethod);
             }
         }
         return res;

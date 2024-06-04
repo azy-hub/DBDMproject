@@ -226,7 +226,7 @@ public class Table {
         List<List<Object>> res = rows;
 
         // Récupère les conditions qui ont été soumise dans le WHERE
-        List<Condition> conditions = selectMethod.getWHERE();
+        List<Condition> conditions = new ArrayList<>(selectMethod.getWHERE());
         int nbConditions = (conditions != null) ? conditions.size() : 0;
 
         if (conditions!= null && !conditions.isEmpty()) {
@@ -371,7 +371,7 @@ public class Table {
     }
 
     public boolean isConditionOnIndexedColumn(Condition condition, List<Column> columnList) {
-        return columnList.stream().anyMatch( column -> column.isIndex() && column.getName().equals(condition.getNameColumn()) && condition.getOp().equals("=") );
+        return columnList.stream().anyMatch( column -> column.isIndex() && column.getName().equalsIgnoreCase(condition.getNameColumn()) && condition.getOp().equals("=") );
     }
 
     public boolean deleteColumn(String nameColumn) {
