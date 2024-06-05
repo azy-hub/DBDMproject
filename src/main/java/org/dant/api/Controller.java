@@ -39,7 +39,6 @@ public class Controller {
     ForwardSlave1 forwardSlave1;
     @RestClient
     ForwardSlave2 forwardSlave2;
-
     ExecutorService executor = Executors.newCachedThreadPool();
 
     @POST

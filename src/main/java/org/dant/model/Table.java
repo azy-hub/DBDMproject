@@ -291,12 +291,8 @@ public class Table {
                 }
             }
             // Va récupérer les lignes qui correspondent à l'intersection de tous les index
-            List<List<Object>> resultat = new ArrayList<>(idxRows.size());
-            for (int idx = 0; idx < idxRows.size(); idx++) {
-                resultat.add(getRows().get(idxRows.get(idx)));
-            }
-            res = resultat;
-            // Supprime les conditions qui ont déja été appliqué sur la liste de toutes nos conditions à appliquer
+            res = Arrays.stream(idxRows.toNativeArray()).parallel().mapToObj(index -> getRows().get(index)).toList();;
+            // Supprime les conditions qui ont déja été appliqué sur la liste de toutes noss conditions à appliquer
             conditions.removeAll(conditionsOnIndexedColumn);
         }
         return res;
