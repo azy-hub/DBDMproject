@@ -41,44 +41,6 @@ public class Controller {
     ForwardSlave2 forwardSlave2;
     ExecutorService executor = Executors.newCachedThreadPool();
 
-    @POST
-    @Path("/parquet/createTable/{tableName}")
-    @Consumes(MediaType.APPLICATION_OCTET_STREAM)
-    public String parseParquet(@RestPath String tableName, InputStream inputStream) {
-        Configuration conf = new Configuration();
-        FileSystem fs;
-        org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path("temp.parquet");
-        try {
-            fs = FileSystem.get(conf);
-            try (FSDataOutputStream outputStream = fs.create(path)) {
-                IOUtils.copy(inputStream, outputStream);
-            }
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        try {
-            HadoopInputFile hadoopInputFile = HadoopInputFile.fromPath(path, conf);
-            try (ParquetFileReader parquetFileReader = ParquetFileReader.open(hadoopInputFile)) {
-                ParquetMetadata parquetMetadata = parquetFileReader.getFooter();
-                MessageType parquetSchema = parquetMetadata.getFileMetaData().getSchema();
-                List<Column> columns = new ArrayList<>();
-                int i=0;
-                for (ColumnDescriptor columnDescriptor : parquetSchema.getColumns()) {
-                    columns.add(new Column(columnDescriptor.getPrimitiveType().getName(), columnDescriptor.getPrimitiveType().getPrimitiveTypeName().toString(), i++));
-                }
-                //createTable(tableName,columns);
-                return "Table created successfully";
-            }
-        } catch (IOException e) {
-            return "error while creating table. "+e.getMessage();
-        } finally {
-            try {
-                fs.delete(path, false);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-    }
 
     @POST
     @Path("/parquet/fillTable/{tableName}")

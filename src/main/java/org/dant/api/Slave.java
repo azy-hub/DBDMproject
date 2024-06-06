@@ -2,25 +2,11 @@ package org.dant.api;
 
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.parquet.ParquetReadOptions;
-import org.apache.parquet.column.page.PageReadStore;
-import org.apache.parquet.example.data.Group;
-import org.apache.parquet.example.data.simple.convert.GroupRecordConverter;
-import org.apache.parquet.hadoop.ParquetFileReader;
-import org.apache.parquet.hadoop.metadata.ParquetMetadata;
-import org.apache.parquet.hadoop.util.HadoopInputFile;
-import org.apache.parquet.io.ColumnIOFactory;
-import org.apache.parquet.io.RecordReader;
-import org.apache.parquet.schema.MessageType;
 import org.dant.commons.TypeDB;
 import org.dant.commons.Utils;
 import org.dant.index.IndexFactory;
 import org.dant.model.*;
 import org.dant.select.SelectMethod;
-
-import java.io.File;
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -61,7 +47,6 @@ public class Slave {
         if(table == null)
             throw new NotFoundException("La table avec le nom " + tableName + " n'a pas été trouvée.");
         table.addAllRows(listArgs.parallelStream().map( list -> Utils.castRow(list,table.getColumns())).collect(Collectors.toList()));
-        System.out.println("Insert "+listArgs.size()+" rows !");
     }
 
     @POST
